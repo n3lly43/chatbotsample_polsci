@@ -103,3 +103,57 @@ def test_execute_sql_query_no_db(tmp_path):
     cfg = {"paths": {"sql_db": str(tmp_path / "sql_db_missing")}}
     rows = execute_sql_query("SELECT 1", cfg)
     assert rows == []
+
+
+def test_format_sql_results_empty():
+    from src.sql_retriever import format_sql_results_as_context
+    assert format_sql_results_as_context([], "SELECT 1", "data.csv") == ""
+
+
+def test_format_sql_results_basic():
+    from src.sql_retriever import format_sql_results_as_context
+    rows = [
+        {"Country": "China", "Year": 2005, "PTS_A": 4.0},
+        {"Country": "China", "Year": 2006, "PTS_A": 3.5},
+    ]
+    result = format_sql_results_as_context(rows, "SELECT * FROM t", "PTS_dataset/pts_data.csv")
+    assert "[CHUNK-SQL-001]" in result
+    assert "[CHUNK-SQL-002]" in result
+    assert "China" in result
+    assert "PTS_dataset/pts_data.csv" in result
+    assert "PRIMARY" in result
+    assert "SELECT * FROM t" in result
+    assert "Rows returned: 2" in result
+
+
+def test_build_schema_summary_empty():
+    from src.sql_retriever import build_schema_summary
+    assert build_schema_summary({}) == ""
+
+
+def test_build_schema_summary_basic():
+    from src.sql_retriever import build_schema_summary
+    schema = {
+        "test_table": {
+            "source_file": "data.csv",
+            "columns": [
+                {"name": "Country", "type": "TEXT", "sample": ["China", "India"]},
+                {"name": "Year", "type": "INTEGER", "sample": [2005, 2010]},
+            ],
+            "row_count": 100,
+        }
+    }
+    result = build_schema_summary(schema)
+    assert "test_table" in result
+    assert "100 rows" in result
+    assert "Country (TEXT)" in result
+    assert "Year (INTEGER)" in result
+
+
+def test_lookup_source_file():
+    from src.sql_retriever import _lookup_source_file
+    schema = {
+        "ds__data_csv": {"source_file": "ds/data.csv", "columns": [], "row_count": 0},
+    }
+    assert _lookup_source_file("ds__data_csv", schema) == "ds/data.csv"
+    assert _lookup_source_file("unknown", schema) == "unknown"

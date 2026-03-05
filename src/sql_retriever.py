@@ -59,3 +59,54 @@ def execute_sql_query(sql_query: str, cfg: dict) -> list[dict]:
         return result
     except Exception:
         return []
+
+
+def format_sql_results_as_context(
+    rows: list[dict], sql_query: str, source_file: str,
+) -> str:
+    """Format SQL result rows as context for the verification pipeline.
+
+    Uses [CHUNK-SQL-NNN] IDs for internal anchoring, consistent with
+    CHUNK-LOCAL and CHUNK-WEB patterns.
+    """
+    if not rows:
+        return ""
+
+    parts = [
+        "=== SQL Query Results (PRIMARY — from local dataset) ===\n",
+        f"Query: {sql_query}",
+        f"Source: {source_file}",
+        f"Rows returned: {len(rows)}\n",
+    ]
+    for i, row in enumerate(rows, 1):
+        fields = ", ".join(f"{k} = {v}" for k, v in row.items())
+        parts.append(f"[CHUNK-SQL-{i:03d}] {fields}")
+    return "\n".join(parts)
+
+
+def _lookup_source_file(table_name: str, schema: dict) -> str:
+    """Look up the original source file for a SQL table name."""
+    entry = schema.get(table_name)
+    if entry:
+        return entry.get("source_file", table_name)
+    return table_name
+
+
+def build_schema_summary(schema: dict) -> str:
+    """Build a compact schema summary for injection into the QU prompt.
+
+    Format:
+        Available SQL tables:
+        - table_name (N rows): col1 (TYPE), col2 (TYPE), ...
+    """
+    if not schema:
+        return ""
+
+    lines = ["Available SQL tables:"]
+    for table_name, info in schema.items():
+        cols = ", ".join(
+            f"{c['name']} ({c['type']})" for c in info.get("columns", [])
+        )
+        row_count = info.get("row_count", 0)
+        lines.append(f"- {table_name} ({row_count} rows): {cols}")
+    return "\n".join(lines)
