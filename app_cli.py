@@ -102,9 +102,7 @@ def _format_sources(retrieval_result: dict) -> str:
             source = meta.get("source", "unknown")
             page = meta.get("page", "?")
             dataset = meta.get("dataset", "")
-            dist = chunk.get("distance", None)
-            dist_str = f"  (distance: {dist:.3f})" if dist is not None else ""
-            lines.append(f"  [{i}] {source}, page {page} [{dataset}]{dist_str}")
+            lines.append(f"  [{i}] {source}, page {page} [{dataset}]")
 
     if web_results:
         if db_results:
