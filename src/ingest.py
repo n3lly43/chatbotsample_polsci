@@ -228,5 +228,17 @@ def ingest_documents(cfg: dict = None, documents_dir: str = None) -> int:
             except Exception as e:
                 print(f"SQL ingestion error (non-fatal): {e}")
 
+    # ── KB meta overview (LLM-generated) ────────────────────────────
+    print("\nGenerating knowledge base overview...")
+    try:
+        from src.kb_meta import build_and_store_overview
+        overview = build_and_store_overview(collection, cfg)
+        if overview:
+            print("KB overview generated and indexed.")
+        else:
+            print("KB overview: nothing to summarize.")
+    except Exception as e:
+        print(f"KB overview generation failed (non-fatal): {e}")
+
     print(f"\nIngestion complete: {total_chunks} chunks from {len(files)} files.")
     return total_chunks

@@ -78,8 +78,14 @@ def understand_query(
             sql_db_dir = os.path.join(str(project_root), sql_db_dir)
         schema_summary = _load_sql_schema_summary(sql_db_dir)
 
+    # Load KB meta overview for routing awareness
+    from src.kb_meta import load_kb_meta
+    kb_overview = load_kb_meta(cfg)
+
     prompt = build_query_understanding_prompt(
-        user_query, domain, history, sql_schema_summary=schema_summary,
+        user_query, domain, history,
+        sql_schema_summary=schema_summary,
+        kb_overview=kb_overview,
     )
 
     try:

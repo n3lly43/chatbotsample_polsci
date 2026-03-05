@@ -65,7 +65,7 @@ RESPONSE LENGTH
 Keep your response length proportional to the available evidence.
 Short context = short answer.  Do NOT pad responses.
 
-=====================================================================
+{kb_overview_section}=====================================================================
 CONTEXT (use ONLY this to answer)
 =====================================================================
 {context}
@@ -149,6 +149,7 @@ RULES for CLARIFY:
 - A broad question is NOT the same as an ambiguous question
 
 {sql_routing_block}
+{kb_overview_block}
 CONVERSATION HISTORY:
 {history}
 
@@ -195,6 +196,7 @@ in the "sql_query" field. Use only table/column names from the schema below.
 def build_query_understanding_prompt(
     query: str, domain: str, history: list[dict],
     sql_schema_summary: str = "",
+    kb_overview: str = "",
 ) -> str:
     """Build the query understanding prompt for pre-retrieval reformulation.
 
@@ -203,6 +205,7 @@ def build_query_understanding_prompt(
         domain: Knowledge domain from config.
         history: Recent conversation messages for context resolution.
         sql_schema_summary: Compact SQL schema summary (empty if no tables).
+        kb_overview: High-level KB overview for routing awareness (optional).
 
     Returns:
         Formatted query understanding prompt string.
@@ -227,11 +230,21 @@ def build_query_understanding_prompt(
     else:
         sql_routing_block = ""
 
+    if kb_overview:
+        kb_overview_block = (
+            "KNOWLEDGE BASE CONTENTS (use this to understand what is available):\n"
+            + _escape_braces(kb_overview)
+            + "\n"
+        )
+    else:
+        kb_overview_block = ""
+
     return QUERY_UNDERSTANDING_PROMPT_TEMPLATE.format(
         domain=domain,
         history=_escape_braces(history_str),
         query=_escape_braces(query),
         sql_routing_block=sql_routing_block,
+        kb_overview_block=kb_overview_block,
     )
 
 
@@ -240,21 +253,36 @@ def _escape_braces(text: str) -> str:
     return text.replace("{", "{{").replace("}", "}}")
 
 
-def build_prompt(context: str, bot_name: str, domain: str) -> str:
+def build_prompt(
+    context: str, bot_name: str, domain: str, kb_overview: str = "",
+) -> str:
     """Build the system prompt with anti-hallucination guardrails.
 
     Args:
         context: The retrieved context chunks to ground the response.
         bot_name: Display name of the chatbot.
         domain: Knowledge domain the bot specializes in.
+        kb_overview: High-level KB overview for general awareness (optional).
 
     Returns:
         Formatted system prompt string.
     """
+    if kb_overview:
+        overview_section = (
+            "---------------------------------------------------------------------\n"
+            "KNOWLEDGE BASE OVERVIEW (general awareness — do NOT cite this\n"
+            "section directly; use it to understand the broader context)\n"
+            "---------------------------------------------------------------------\n"
+            f"{_escape_braces(kb_overview)}\n\n"
+        )
+    else:
+        overview_section = ""
+
     return SYSTEM_PROMPT_TEMPLATE.format(
         bot_name=bot_name,
         domain=domain,
         context=_escape_braces(context),
+        kb_overview_section=overview_section,
     )
 
 

@@ -224,11 +224,15 @@ def verify_and_respond(
     llm_cfg = cfg.get("llm", {})
     default_max = llm_cfg.get("max_tokens", 2048)
 
+    # ── Load KB overview for general awareness ────────────────────────────
+    from src.kb_meta import load_kb_meta
+    kb_overview = load_kb_meta(cfg)
+
     # ── Layer 2: Soft max-token cap ───────────────────────────────────────
     soft_max = compute_soft_max_tokens(len(context), default_max)
 
     # ── Layer 1: System prompt guardrails (built into prompt) ─────────────
-    system_prompt = build_prompt(context, bot_name, domain)
+    system_prompt = build_prompt(context, bot_name, domain, kb_overview=kb_overview)
 
     # ── Generate initial response ─────────────────────────────────────────
     response = generate(system_prompt, query, cfg, max_tokens=soft_max)
