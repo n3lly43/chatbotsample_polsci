@@ -201,14 +201,15 @@ def ingest_documents(cfg: dict = None, documents_dir: str = None) -> int:
             print(f"  No text extracted, skipping.")
             continue
 
-        source_name = f"{dataset_name}/{file_path.name}"
+        source_name = file_path.relative_to(Path(documents_dir)).as_posix()
         chunks = chunk_documents(pages, source_name, dataset_name, chunk_size, chunk_overlap)
         print(f"  -> {len(chunks)} chunks")
 
         batch_size = 100
         for i in range(0, len(chunks), batch_size):
             batch = chunks[i:i + batch_size]
-            ids = [f"{dataset_name}_{file_path.stem}{file_path.suffix}_{i + j}" for j in range(len(batch))]
+            safe_id_prefix = source_name.replace("/", "_").replace(" ", "_")
+            ids = [f"{safe_id_prefix}_{i + j}" for j in range(len(batch))]
             documents = [c.get("text", "") for c in batch]
             metadatas = [c.get("metadata", {}) for c in batch]
             collection.add(ids=ids, documents=documents, metadatas=metadatas)

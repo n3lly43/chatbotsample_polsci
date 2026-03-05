@@ -17,14 +17,11 @@ import json
 import os
 from pathlib import Path
 
+from src.prompts import _escape_braces
+
 META_CHUNK_ID = "kb_meta_overview_001"
 META_SOURCE = "Knowledge Base Overview"
 META_DATASET = "meta"
-
-
-def _escape_braces(text: str) -> str:
-    """Escape curly braces in user-supplied text for safe use with str.format()."""
-    return text.replace("{", "{{").replace("}", "}}")
 
 _META_GENERATION_PROMPT = """\
 You are a knowledge base analyst. Given the following information about

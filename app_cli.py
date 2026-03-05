@@ -92,8 +92,9 @@ def _format_sources(retrieval_result: dict) -> str:
 
     db_results = retrieval_result.get("db_results", [])
     web_results = retrieval_result.get("web_results", [])
+    sql_results = retrieval_result.get("sql_results", [])
 
-    if not db_results and not web_results:
+    if not db_results and not web_results and not sql_results:
         return "No sources were used for the last response."
 
     if db_results:
@@ -105,8 +106,13 @@ def _format_sources(retrieval_result: dict) -> str:
             dataset = meta.get("dataset", "")
             lines.append(f"  [{i}] {source}, page {page} [{dataset}]")
 
-    if web_results:
+    if sql_results:
         if db_results:
+            lines.append("")
+        lines.append(f"SQL Results: {len(sql_results)} row(s) returned")
+
+    if web_results:
+        if db_results or sql_results:
             lines.append("")
         lines.append("Web Sources:")
         for i, r in enumerate(web_results, 1):
