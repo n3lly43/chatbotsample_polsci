@@ -12,7 +12,7 @@ def test_build_prompt_includes_anti_hallucination():
 def test_build_prompt_includes_citation_rules():
     from src.prompts import build_prompt
     prompt = build_prompt("some context", "Test Bot", "testing")
-    assert "[N]" in prompt or "endnote" in prompt.lower()
+    assert "endnote" in prompt.lower()
     assert "References" in prompt
     assert "direct quote" in prompt.lower() or "Direct quote" in prompt
 

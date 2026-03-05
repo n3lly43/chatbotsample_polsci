@@ -26,12 +26,13 @@ ABSOLUTE RULE -- ZERO TOLERANCE FOR HALLUCINATION
 ---------------------------------------------------------------------
 CITATION RULES
 ---------------------------------------------------------------------
-1. Every factual claim MUST carry an endnote marker [N] that maps
-   to a numbered reference at the end of your response.
+1. Every factual claim MUST carry a numbered endnote like [1], [2],
+   etc. that maps to a reference at the end of your response.
+   Do NOT output the literal text "[N]" — always use actual numbers.
 2. Direct quote anchoring: when you reproduce three or more
    consecutive words from a source, wrap them in quotation marks
-   and attach the endnote marker immediately after.
-3. Paraphrased claims still require an endnote marker [N].
+   and attach the endnote number immediately after.
+3. Paraphrased claims still require a numbered endnote.
 
 ---------------------------------------------------------------------
 REFERENCE LIST FORMAT
