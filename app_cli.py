@@ -198,6 +198,16 @@ def main() -> None:
         "before showing it to you. If I can't find it in your documents, "
         "I'll let you know rather than guess.\n\n",
     )
+    web_enabled = cfg.get("web_search", {}).get("enabled", False)
+    if web_enabled:
+        welcome.append("Web search: ", style="bold")
+        welcome.append("ON", style="bold green")
+        welcome.append(" (Semantic Scholar). Use /websearch off to disable.\n\n")
+    else:
+        welcome.append("Web search: ", style="bold")
+        welcome.append("OFF", style="bold red")
+        welcome.append(". Use /websearch on to enable.\n\n")
+
     welcome.append("Type your question, or /help for commands.\n", style="italic")
     welcome.append("Type /quit to exit.", style="italic dim")
     console.print(Panel(welcome, title="Welcome", border_style="cyan"))
