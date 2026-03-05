@@ -309,6 +309,12 @@ Web UI always allowed 1 clarification round regardless of `max_clarifications` c
 
 - Committed CLAUDE.md, docs/plans/, and docs/WORKLOG.md to the git repo (previously only existed in working copy)
 - Fixed CLAUDE.md: `max_clarifications` now correctly lists both `app_cli.py` and `app_web.py` as consumers
+- Refined CLAUDE.md:
+  - Separated ingestion pipeline and query pipeline in architecture description
+  - Fixed config table column headers (`Config Path | Read By | Notes`)
+  - Added `paths.knowledge_base` to config table (was missing)
+  - Updated project structure to include `CLAUDE.md` and `docs/`
+  - Added `.get()` rule to "Do NOT" section to prevent future direct-access bugs
 
 ### Test Suite
 
