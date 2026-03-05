@@ -154,7 +154,6 @@ Copy your research files into the `knowledge_base/` folder. You can organize the
 ```
 knowledge_base/
   NAVCO 2.0/
-    Chenoweth_Stephan_2011.pdf
     NAVCO2JPRcodebook2013.pdf
     navco2_dataset.csv
   Survey Data/
