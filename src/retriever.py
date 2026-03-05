@@ -11,26 +11,38 @@ NO_SOURCES_REFUSAL = (
 
 
 def retrieve_from_vectordb(query: str, cfg: dict) -> list[dict]:
-    """Retrieve relevant chunks from ChromaDB."""
+    """Retrieve all relevant chunks from ChromaDB using a distance threshold.
+
+    Queries a large candidate pool, then filters to keep only chunks
+    with cosine distance below ``max_distance``.  The ``top_k`` setting
+    acts as a hard cap to prevent overwhelming the LLM context.
+    """
     from src.ingest import get_chroma_collection
 
-    top_k = cfg.get("retrieval", {}).get("top_k", 10)
+    retrieval_cfg = cfg.get("retrieval", {})
+    top_k = retrieval_cfg.get("top_k", 50)
+    max_distance = retrieval_cfg.get("max_distance", 0.55)
     collection = get_chroma_collection(cfg)
 
     if collection.count() == 0:
         return []
 
+    # Query a large candidate pool, then filter by relevance
+    candidate_count = min(top_k, collection.count())
     results = collection.query(
         query_texts=[query],
-        n_results=min(top_k, collection.count()),
+        n_results=candidate_count,
     )
 
     chunks = []
     for i in range(len(results["documents"][0])):
+        distance = results["distances"][0][i]
+        if distance > max_distance:
+            continue
         chunks.append({
             "text": results["documents"][0][i],
             "metadata": results["metadatas"][0][i],
-            "distance": results["distances"][0][i],
+            "distance": distance,
         })
     return chunks
 

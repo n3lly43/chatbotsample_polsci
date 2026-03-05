@@ -346,7 +346,8 @@ embeddings:
 retrieval:
   chunk_size: 1000                 # Characters per chunk (when splitting documents)
   chunk_overlap: 100               # Overlap between chunks (preserves context)
-  top_k: 10                        # Number of chunks to retrieve per query
+  top_k: 50                        # Max chunks to consider per query
+  max_distance: 0.55               # Only keep chunks with distance below this (0-1)
 
 web_search:
   enabled: true                    # true | false
