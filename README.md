@@ -92,8 +92,8 @@ Before you begin, you will need:
 If you have `git` installed:
 
 ```bash
-git clone https://github.com/LIANJie-Jason/chatbotsample_api.git
-cd chatbotsample_api
+git clone https://github.com/LIANJie-Jason/rag-research-chatbot.git
+cd rag-research-chatbot
 ```
 
 If you don't have `git`, download the ZIP file from GitHub and unzip it. Then open a terminal and navigate to the unzipped folder:
