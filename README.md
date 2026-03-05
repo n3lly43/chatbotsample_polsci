@@ -72,7 +72,7 @@ participation to campaign success. [3]
 
 Before you begin, you will need:
 
-1. **Python 3.11 or later** installed on your computer
+1. **Python 3.11–3.13** installed on your computer (Python 3.14+ is **not supported** due to dependency compatibility)
    - **Mac**: Open Terminal and type `python3 --version`. If you don't have Python, download it from [python.org](https://www.python.org/downloads/)
    - **Windows**: Download from [python.org](https://www.python.org/downloads/). During installation, check the box that says "Add Python to PATH"
 2. **An API key** from one of these AI providers (you only need one):
