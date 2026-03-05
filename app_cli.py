@@ -275,6 +275,8 @@ def main() -> None:
         original_query = user_input
         search_query = user_input
         display_query = user_input
+        route = "vector"
+        sql_query = None
 
         if qu_enabled:
             with console.status("[bold blue]Understanding your question...[/bold blue]"):

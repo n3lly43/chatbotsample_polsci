@@ -51,12 +51,13 @@ def execute_sql_query(sql_query: str, cfg: dict) -> list[dict]:
 
     try:
         conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.execute(sql_query)
-        rows = cursor.fetchmany(max_rows)
-        result = [dict(row) for row in rows]
-        conn.close()
-        return result
+        try:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute(sql_query)
+            rows = cursor.fetchmany(max_rows)
+            return [dict(row) for row in rows]
+        finally:
+            conn.close()
     except Exception:
         return []
 

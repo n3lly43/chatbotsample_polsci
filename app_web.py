@@ -154,6 +154,8 @@ def render_chat():
 
         search_query = combined
         display_query = combined
+        route = "vector"
+        sql_query = None
         max_clarifications = qu_cfg.get("max_clarifications", 1)
 
         if qu_enabled:
