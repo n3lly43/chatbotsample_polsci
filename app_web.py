@@ -153,16 +153,20 @@ def render_chat():
         max_history = qu_cfg.get("max_history", 6)
 
         search_query = combined
+        response_query = combined  # query passed to verify_and_respond
 
         if qu_enabled:
+            # Exclude the just-appended user message to avoid sending
+            # the current question twice (once in history, once as query)
+            prior_messages = st.session_state.messages[:-1]
             history = [
                 {"role": m["role"], "content": m["content"]}
-                for m in st.session_state.messages[-max_history:]
+                for m in prior_messages[-max_history:]
             ]
             try:
                 qu_result = understand_query(combined, cfg, history)
             except Exception:
-                qu_result = {"action": "search", "search_query": combined, "original_query": original_query}
+                qu_result = {"action": "search", "search_query": combined, "original_query": combined}
 
             if qu_result["action"] == "clarify" and pending is None:
                 # Ask clarification — store original query, show question
@@ -181,7 +185,7 @@ def render_chat():
         with st.chat_message("assistant"):
             with st.status("Searching knowledge base...", expanded=True) as status:
                 # Show reformulated query if different
-                if search_query != original_query:
+                if search_query != response_query:
                     status.update(label=f'Searching for: "{search_query}"...')
 
                 # Retrieval
@@ -194,8 +198,9 @@ def render_chat():
                     label=f"Found {n_local} local + {n_web} web sources. Generating response..."
                 )
 
-                # Verification and response generation (uses original query)
-                result = verify_and_respond(original_query, retrieval_result, cfg)
+                # Verification and response generation (uses combined query
+                # so the LLM answers the clarified question, not just the original)
+                result = verify_and_respond(response_query, retrieval_result, cfg)
 
                 # Update status based on verification outcome
                 if result.get("refused"):

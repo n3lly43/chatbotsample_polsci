@@ -276,28 +276,34 @@ Changes you make in the sidebar (switching models, toggling web search) apply on
 You ask a question
         |
         v
- 1. RETRIEVE -- Search your local vector database for relevant passages
+ 1. UNDERSTAND -- The AI reformulates your question for better search
+                -- Expands abbreviations, resolves follow-up references
+                -- May ask a clarification question if genuinely ambiguous
+        |
+        v
+ 2. RETRIEVE -- Search your local vector database for relevant passages
               -- Optionally search Semantic Scholar for academic papers
         |
         v
- 2. GENERATE -- Send the question + retrieved passages to the AI model
+ 3. GENERATE -- Send the question + retrieved passages to the AI model
               -- System prompt enforces strict citation rules
         |
         v
- 3. VERIFY  -- Scan for warning phrases ("based on my knowledge...")
+ 4. VERIFY  -- Scan for warning phrases ("based on my knowledge...")
              -- Check that cited claims overlap with source text
              -- Ask the AI to audit its own answer against the sources
              -- If errors found: correct and re-verify (up to 3 times)
              -- If still failing: refuse to answer
         |
         v
- 4. DISPLAY -- Show the verified answer with numbered references
+ 5. DISPLAY -- Show the verified answer with numbered references
 ```
 
 **Key design principles:**
 
 - **Your documents always come first.** Local sources are the primary authority. Web sources (if enabled) are supplementary and never override your documents.
 - **No sources = no answer.** If the chatbot cannot find relevant passages in your documents or the web, it will say so rather than make something up.
+- **Smart query understanding.** Before searching, the chatbot reformulates your question to improve retrieval accuracy -- expanding abbreviations, resolving references from prior conversation, and adding relevant keywords. It shows you what it searched for, so you can see how your question was interpreted.
 - **Every claim gets a citation.** The answer format uses numbered endnotes (`[1]`, `[2]`, etc.) with a full reference list at the bottom.
 - **Direct quotes are marked.** When the chatbot uses three or more consecutive words from a source, they appear in quotation marks.
 
@@ -346,13 +352,18 @@ embeddings:
 retrieval:
   chunk_size: 1000                 # Characters per chunk (when splitting documents)
   chunk_overlap: 100               # Overlap between chunks (preserves context)
-  top_k: 50                        # Max chunks to consider per query
-  max_distance: 0.55               # Only keep chunks with distance below this (0-1)
+  top_k: 50                        # Candidate pool cap for vector search
+  max_distance: 0.55               # Relevance threshold (0=identical, 1=unrelated)
 
 web_search:
   enabled: true                    # true | false
   backend: "semantic_scholar"      # Search engine for academic papers
   max_results: 5                   # Papers to retrieve per query
+
+query_understanding:
+  enabled: true                    # Set to false to skip query reformulation
+  max_history: 6                   # Conversation messages used for context
+  max_clarifications: 1            # Max clarification rounds before forcing a search
 
 verification:
   enabled: true                    # Set to false to skip verification (faster but riskier)
