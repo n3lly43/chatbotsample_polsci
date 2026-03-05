@@ -36,3 +36,24 @@ def test_build_verification_prompt():
     assert "citation" in prompt.lower()
     assert "JSON" in prompt or "json" in prompt
     assert "error_count" in prompt
+
+
+def test_build_query_understanding_prompt():
+    from src.prompts import build_query_understanding_prompt
+    prompt = build_query_understanding_prompt(
+        "What happened in China?",
+        "human rights",
+        [{"role": "user", "content": "prior question"}],
+    )
+    assert "human rights" in prompt
+    assert "What happened in China?" in prompt
+    assert "prior question" in prompt
+    assert "SEARCH" in prompt or "search" in prompt
+    assert "CLARIFY" in prompt or "clarify" in prompt
+
+
+def test_build_query_understanding_prompt_no_history():
+    from src.prompts import build_query_understanding_prompt
+    prompt = build_query_understanding_prompt("test query", "research", [])
+    assert "No prior conversation" in prompt
+    assert "test query" in prompt

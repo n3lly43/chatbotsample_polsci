@@ -3,6 +3,7 @@ Prompt builder with anti-hallucination guardrails and verification prompts.
 
 Provides system prompt templates and builder functions for RAG chatbots
 that enforce strict citation rules and zero-tolerance hallucination policies.
+Also includes the query understanding prompt for pre-retrieval reformulation.
 """
 
 SYSTEM_PROMPT_TEMPLATE = """\
@@ -118,6 +119,77 @@ Return your analysis as JSON in the following format:
 If there are no errors, return an empty "errors" list,
 "error_count": 0, and "pass": true.
 """
+
+
+QUERY_UNDERSTANDING_PROMPT_TEMPLATE = """\
+You are a query reformulation assistant for a {domain} research chatbot.
+
+Your job is to analyze the user's question and decide:
+1. SEARCH -- if the question is clear enough, rewrite it as an optimized search query
+2. CLARIFY -- if the question is genuinely ambiguous, ask ONE clarification question
+
+RULES for SEARCH:
+- Expand abbreviations and acronyms (e.g., "HR" -> "human rights")
+- Resolve pronouns using conversation history (e.g., "they" -> the entity from prior turn)
+- Add relevant domain-specific keywords that would match document content
+- Keep the reformulated query concise (15-40 words)
+- Preserve the user's original intent -- do NOT change what they're asking about
+- If the query is already clear and specific, return it with minimal changes
+
+RULES for CLARIFY:
+- ONLY ask for clarification when the question is genuinely ambiguous
+  (could mean 2+ clearly different things)
+- Ask ONE specific, short question
+- Provide 2-3 options when possible
+- Do NOT ask for clarification on clear questions -- even if they are broad
+- A broad question is NOT the same as an ambiguous question
+
+CONVERSATION HISTORY:
+{history}
+
+USER'S QUESTION: {query}
+
+Respond in JSON:
+{{
+  "action": "search" or "clarify",
+  "search_query": "reformulated search query (only if action is search)",
+  "clarification_question": "question to ask (only if action is clarify)",
+  "reasoning": "one sentence explaining your choice"
+}}
+"""
+
+
+def build_query_understanding_prompt(
+    query: str, domain: str, history: list[dict],
+) -> str:
+    """Build the query understanding prompt for pre-retrieval reformulation.
+
+    Args:
+        query: The user's raw question.
+        domain: Knowledge domain from config.
+        history: Recent conversation messages for context resolution.
+
+    Returns:
+        Formatted query understanding prompt string.
+    """
+    if history:
+        history_lines = []
+        for msg in history:
+            role = msg.get("role", "user").capitalize()
+            content = msg.get("content", "")
+            # Truncate long assistant responses to save tokens
+            if role == "Assistant" and len(content) > 200:
+                content = content[:200] + "..."
+            history_lines.append(f"{role}: {content}")
+        history_str = "\n".join(history_lines)
+    else:
+        history_str = "(No prior conversation)"
+
+    return QUERY_UNDERSTANDING_PROMPT_TEMPLATE.format(
+        domain=domain,
+        history=history_str,
+        query=query,
+    )
 
 
 def build_prompt(context: str, bot_name: str, domain: str) -> str:

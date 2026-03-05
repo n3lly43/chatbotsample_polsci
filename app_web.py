@@ -4,6 +4,7 @@ import streamlit as st
 
 from src.config_loader import load_config, get_api_key
 from src.ingest import get_chroma_collection, ingest_documents
+from src.query_engine import understand_query
 from src.retriever import retrieve
 from src.verifier import verify_and_respond
 from src.llm import list_models
@@ -19,6 +20,8 @@ def init_session():
         st.session_state.cfg = load_config()
     if "last_retrieval" not in st.session_state:
         st.session_state.last_retrieval = None
+    if "pending_clarification" not in st.session_state:
+        st.session_state.pending_clarification = None
 
 
 # ── Sidebar ──────────────────────────────────────────────────────────────────
@@ -133,11 +136,56 @@ def render_chat():
         with st.chat_message("user"):
             st.markdown(prompt)
 
+        # ── Check if this is a clarification response ───────────────────
+        pending = st.session_state.pending_clarification
+        if pending is not None:
+            # This prompt is the user's clarification answer
+            combined = f"{pending} — {prompt}"
+            original_query = pending
+            st.session_state.pending_clarification = None
+        else:
+            combined = prompt
+            original_query = prompt
+
+        # ── Query understanding ─────────────────────────────────────────
+        qu_cfg = cfg.get("query_understanding", {})
+        qu_enabled = qu_cfg.get("enabled", True)
+        max_history = qu_cfg.get("max_history", 6)
+
+        search_query = combined
+
+        if qu_enabled:
+            history = [
+                {"role": m["role"], "content": m["content"]}
+                for m in st.session_state.messages[-max_history:]
+            ]
+            try:
+                qu_result = understand_query(combined, cfg, history)
+            except Exception:
+                qu_result = {"action": "search", "search_query": combined, "original_query": original_query}
+
+            if qu_result["action"] == "clarify" and pending is None:
+                # Ask clarification — store original query, show question
+                st.session_state.pending_clarification = original_query
+                clarification_msg = f"**Before I search, could you clarify?** {qu_result['clarification_question']}"
+                st.session_state.messages.append(
+                    {"role": "assistant", "content": clarification_msg}
+                )
+                with st.chat_message("assistant"):
+                    st.markdown(clarification_msg)
+                return
+
+            search_query = qu_result.get("search_query", combined)
+
         # Generate assistant response
         with st.chat_message("assistant"):
             with st.status("Searching knowledge base...", expanded=True) as status:
+                # Show reformulated query if different
+                if search_query != original_query:
+                    status.update(label=f'Searching for: "{search_query}"...')
+
                 # Retrieval
-                retrieval_result = retrieve(prompt, cfg)
+                retrieval_result = retrieve(search_query, cfg)
                 st.session_state.last_retrieval = retrieval_result
 
                 n_local = len(retrieval_result.get("db_results", []))
@@ -146,8 +194,8 @@ def render_chat():
                     label=f"Found {n_local} local + {n_web} web sources. Generating response..."
                 )
 
-                # Verification and response generation
-                result = verify_and_respond(prompt, retrieval_result, cfg)
+                # Verification and response generation (uses original query)
+                result = verify_and_respond(original_query, retrieval_result, cfg)
 
                 # Update status based on verification outcome
                 if result.get("refused"):

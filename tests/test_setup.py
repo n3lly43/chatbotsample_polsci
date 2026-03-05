@@ -22,6 +22,10 @@ def test_generate_config_yaml():
     assert cfg["retrieval"]["chunk_size"] == 1000
     assert cfg["retrieval"]["chunk_overlap"] == 100
     assert cfg["embeddings"]["provider"] == "local"
+    # Query understanding config
+    assert cfg["query_understanding"]["enabled"] is True
+    assert cfg["query_understanding"]["max_history"] == 6
+    assert cfg["query_understanding"]["max_clarifications"] == 1
 
 def test_generate_env_file():
     from setup import generate_env

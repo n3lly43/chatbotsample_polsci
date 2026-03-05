@@ -56,6 +56,11 @@ def generate_config(
             "backend": "semantic_scholar",
             "max_results": 5,
         },
+        "query_understanding": {
+            "enabled": True,
+            "max_history": 6,
+            "max_clarifications": 1,
+        },
         "verification": {
             "enabled": True,
             "max_iterations": 3,

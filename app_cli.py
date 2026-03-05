@@ -9,6 +9,7 @@ from rich.text import Text
 
 from src.config_loader import load_config, get_api_key
 from src.ingest import ingest_documents
+from src.query_engine import understand_query
 from src.retriever import retrieve
 from src.verifier import verify_and_respond
 from src.llm import list_models
@@ -214,6 +215,7 @@ def main() -> None:
     state: dict = {
         "last_retrieval": None,
         "web_search_override": None,
+        "conversation_history": [],
     }
 
     while True:
@@ -254,7 +256,6 @@ def main() -> None:
             continue
 
         # ── RAG pipeline ─────────────────────────────────────────────────
-        query = user_input
 
         # Apply web search override if set
         effective_cfg = cfg
@@ -266,23 +267,82 @@ def main() -> None:
                 "enabled": state["web_search_override"],
             }
 
-        # Retrieve
+        # ── Query understanding ─────────────────────────────────────────
+        qu_cfg = effective_cfg.get("query_understanding", {})
+        qu_enabled = qu_cfg.get("enabled", True)
+        max_clarifications = qu_cfg.get("max_clarifications", 1)
+
+        original_query = user_input
+        search_query = user_input
+
+        if qu_enabled:
+            with console.status("[bold blue]Understanding your question...[/bold blue]"):
+                try:
+                    qu_result = understand_query(
+                        user_input, effective_cfg,
+                        state.get("conversation_history", []),
+                    )
+                except Exception as e:
+                    console.print(f"[yellow]Query understanding failed, using raw query: {e}[/yellow]")
+                    qu_result = {"action": "search", "search_query": user_input, "original_query": user_input}
+
+            # Handle clarification
+            clarification_rounds = 0
+            while qu_result["action"] == "clarify" and clarification_rounds < max_clarifications:
+                console.print(f"\n[bold yellow]Clarification needed:[/bold yellow] {qu_result['clarification_question']}")
+                try:
+                    clarification = input("You> ").strip()
+                except (EOFError, KeyboardInterrupt):
+                    clarification = ""
+                if not clarification:
+                    break
+                combined = f"{user_input} — {clarification}"
+                with console.status("[bold blue]Understanding your question...[/bold blue]"):
+                    try:
+                        qu_result = understand_query(
+                            combined, effective_cfg,
+                            state.get("conversation_history", []),
+                        )
+                    except Exception:
+                        qu_result = {"action": "search", "search_query": combined, "original_query": user_input}
+                clarification_rounds += 1
+
+            # After max clarification rounds, force search
+            if qu_result["action"] == "clarify":
+                qu_result["action"] = "search"
+                # search_query fallback is already set in _parse_qu_result
+
+            search_query = qu_result.get("search_query", user_input)
+            original_query = qu_result.get("original_query", user_input)
+
+            # Show reformulated query if different from original
+            if search_query != user_input:
+                console.print(f"[dim]Searching for: \"{search_query}\"[/dim]")
+
+        # ── Retrieve ────────────────────────────────────────────────────
         with console.status("[bold blue]Searching knowledge base...[/bold blue]"):
             try:
-                retrieval_result = retrieve(query, effective_cfg)
+                retrieval_result = retrieve(search_query, effective_cfg)
             except Exception as e:
                 console.print(f"[red]Retrieval error: {e}[/red]")
                 continue
 
         state["last_retrieval"] = retrieval_result
 
-        # Generate + verify
+        # ── Generate + verify ───────────────────────────────────────────
         with console.status("[bold blue]Generating response...[/bold blue]"):
             try:
-                result = verify_and_respond(query, retrieval_result, effective_cfg)
+                result = verify_and_respond(original_query, retrieval_result, effective_cfg)
             except Exception as e:
                 console.print(f"[red]Generation error: {e}[/red]")
                 continue
+
+        # ── Update conversation history ─────────────────────────────────
+        history = state.get("conversation_history", [])
+        max_history = qu_cfg.get("max_history", 6)
+        history.append({"role": "user", "content": user_input})
+        history.append({"role": "assistant", "content": result["response"]})
+        state["conversation_history"] = history[-max_history:]
 
         # ── Display response ─────────────────────────────────────────────
         response_text = result["response"]
