@@ -192,11 +192,11 @@ def main() -> None:
     welcome.append(f"{bot_name}", style="bold cyan")
     welcome.append(f" -- Your {domain} research assistant\n\n", style="dim")
     welcome.append(
-        "I answer questions using only the documents in your knowledge base. "
-        "Every claim is cited with numbered references, and a 6-layer "
-        "verification system checks each answer before showing it to you. "
-        "If I can't find the answer in your documents, I'll say so rather "
-        "than guess.\n\n",
+        f"Hi! I'm your research assistant on {domain}. Ask me anything about "
+        "the documents in your knowledge base — I'll search through them, "
+        "cite my sources with numbered references, and verify every answer "
+        "before showing it to you. If I can't find it in your documents, "
+        "I'll let you know rather than guess.\n\n",
     )
     welcome.append("Type your question, or /help for commands.\n", style="italic")
     welcome.append("Type /quit to exit.", style="italic dim")
