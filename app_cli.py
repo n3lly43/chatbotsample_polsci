@@ -314,15 +314,19 @@ def main() -> None:
 
             search_query = qu_result.get("search_query", user_input)
             display_query = qu_result.get("display_query", user_input)
+            route = qu_result.get("route", "vector")
+            sql_query = qu_result.get("sql_query")
 
             # Show reformulated query if different from original
             if search_query != user_input:
                 console.print(f"[dim]Searching for: \"{search_query}\"[/dim]")
+            if route in ("sql", "both"):
+                console.print(f"[dim]Using SQL query for structured data[/dim]")
 
         # ── Retrieve ────────────────────────────────────────────────────
         with console.status("[bold blue]Searching knowledge base...[/bold blue]"):
             try:
-                retrieval_result = retrieve(search_query, effective_cfg)
+                retrieval_result = retrieve(search_query, effective_cfg, route=route, sql_query=sql_query)
             except Exception as e:
                 console.print(f"[red]Retrieval error: {e}[/red]")
                 continue
@@ -377,7 +381,10 @@ def main() -> None:
         # Source summary
         db_count = len(retrieval_result.get("db_results", []))
         web_count = len(retrieval_result.get("web_results", []))
+        sql_count = len(retrieval_result.get("sql_results", []))
         source_summary = f"[dim]Sources: {db_count} local"
+        if sql_count:
+            source_summary += f", {sql_count} SQL rows"
         if web_count:
             source_summary += f", {web_count} web"
         source_summary += " -- type /sources for details[/dim]"
