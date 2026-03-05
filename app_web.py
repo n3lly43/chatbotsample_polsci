@@ -154,6 +154,7 @@ def render_chat():
 
         search_query = combined
         response_query = combined  # query passed to verify_and_respond
+        max_clarifications = qu_cfg.get("max_clarifications", 1)
 
         if qu_enabled:
             # Exclude the just-appended user message to avoid sending
@@ -168,7 +169,7 @@ def render_chat():
             except Exception:
                 qu_result = {"action": "search", "search_query": combined, "original_query": combined}
 
-            if qu_result["action"] == "clarify" and pending is None:
+            if qu_result["action"] == "clarify" and pending is None and max_clarifications > 0:
                 # Ask clarification — store original query, show question
                 st.session_state.pending_clarification = original_query
                 clarification_msg = f"**Before I search, could you clarify?** {qu_result['clarification_question']}"

@@ -112,7 +112,7 @@ def discover_files(documents_dir: str) -> list[tuple[Path, str]]:
 
 def get_chroma_collection(cfg: dict):
     """Get or create the ChromaDB collection with embeddings."""
-    db_path = cfg["paths"]["vector_db"]
+    db_path = cfg.get("paths", {}).get("vector_db", "chroma_db")
     if not os.path.isabs(db_path):
         db_path = os.path.join(os.path.dirname(os.path.abspath("config.yaml")), db_path)
 
@@ -145,7 +145,7 @@ def ingest_documents(cfg: dict = None, documents_dir: str = None) -> int:
         cfg = load_config()
 
     if documents_dir is None:
-        documents_dir = cfg["paths"]["knowledge_base"]
+        documents_dir = cfg.get("paths", {}).get("knowledge_base", "knowledge_base")
         if not os.path.isabs(documents_dir):
             documents_dir = os.path.join(
                 os.path.dirname(os.path.abspath("config.yaml")), documents_dir

@@ -21,6 +21,8 @@ def test_generate_config_yaml():
     assert cfg["verification"]["strict_mode"] is True
     assert cfg["retrieval"]["chunk_size"] == 1000
     assert cfg["retrieval"]["chunk_overlap"] == 100
+    assert cfg["retrieval"]["top_k"] == 50
+    assert cfg["retrieval"]["max_distance"] == 0.55
     assert cfg["embeddings"]["provider"] == "local"
     # Query understanding config
     assert cfg["query_understanding"]["enabled"] is True
