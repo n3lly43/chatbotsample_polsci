@@ -92,7 +92,7 @@ Before you begin, you will need:
 If you have `git` installed:
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/rag-research-chatbot.git
+git clone https://github.com/LIANJie-Jason/rag-research-chatbot.git
 cd rag-research-chatbot
 ```
 
