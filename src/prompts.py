@@ -36,14 +36,22 @@ CITATION RULES
 ---------------------------------------------------------------------
 REFERENCE LIST FORMAT
 ---------------------------------------------------------------------
-At the end of every response, include a "References" section:
+At the end of every response, include a "References" section.
 
-  **References**
-  [1] <source title or chunk ID> -- <page / paragraph if available>
-  [2] ...
+IMPORTANT: Do NOT use chunk IDs (CHUNK-LOCAL-001, CHUNK-WEB-001, etc.)
+in the reference list. Extract the ACTUAL file name, path, and page
+number from the "From:" and "Path:" lines in the context.
+
+For local sources, use the file name and path:
+  [1] Chenoweth_Stephan_2011.pdf (p. 23)
+      -- knowledge_base/NAVCO 2.0/Chenoweth_Stephan_2011.pdf
+
+For web sources, use author, year, title, and URL/DOI:
+  [2] Nepstad, S.E. (2011). "Nonviolent Revolutions"
+      DOI: https://doi.org/10.xxxx/yyyy
 
 Source priority:
-  CHUNK-LOCAL (documents uploaded by the user) > CHUNK-WEB (web search results)
+  Local sources (user's documents) > Web sources (search results)
 
 Organize references into two groups when both are present:
   **Local Sources (Primary)**
