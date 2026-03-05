@@ -452,11 +452,7 @@ You can also set API keys as environment variables in your terminal instead of u
 
 ### Choosing a Model
 
-| If you want... | Choose |
-|----------------|--------|
-| Best accuracy | GPT-4o, Claude Opus 4.6, Gemini 2.5 Pro |
-| Lower cost | GPT-4o-mini, Claude Haiku 4.5, Gemini 2.5 Flash |
-| Balance of both | GPT-4.1-mini, Claude Sonnet 4.6, Gemini 2.0 Flash |
+Better models are more expensive!
 
 You can switch models at any time using `/model` in the CLI or the sidebar dropdown in the web UI. No need to re-run the setup wizard.
 
