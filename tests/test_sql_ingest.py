@@ -163,3 +163,42 @@ def test_ingest_to_sql_clears_on_rerun(tmp_path):
     schema = ingest_to_sql(files, str(kb_dir), cfg)
     table_name = list(schema.keys())[0]
     assert schema[table_name]["row_count"] == 2
+
+
+def test_ingest_documents_calls_sql_ingest(tmp_path):
+    """Integration test: ingest_documents should also populate SQLite."""
+    import os
+    from pathlib import Path
+
+    # Set up knowledge base with a CSV
+    kb_dir = tmp_path / "knowledge_base"
+    ds_dir = kb_dir / "testds"
+    ds_dir.mkdir(parents=True)
+    csv_file = ds_dir / "scores.csv"
+    csv_file.write_text("Country,Year,Score\nChina,2005,4.0\nIndia,2005,3.0\n")
+
+    # Minimal config
+    cfg = {
+        "paths": {
+            "knowledge_base": str(kb_dir),
+            "vector_db": str(tmp_path / "chroma_db"),
+            "sql_db": str(tmp_path / "sql_db"),
+        },
+        "retrieval": {"chunk_size": 1000, "chunk_overlap": 100},
+        "embeddings": {"provider": "local"},
+        "sql": {"enabled": True},
+    }
+
+    from src.ingest import ingest_documents
+    count = ingest_documents(cfg, documents_dir=str(kb_dir))
+
+    # Verify ChromaDB got chunks
+    assert count > 0
+
+    # Verify SQLite DB was created
+    db_path = tmp_path / "sql_db" / "knowledge_base.db"
+    assert db_path.exists()
+
+    # Verify schema registry
+    schema_path = tmp_path / "sql_db" / "sql_schemas.json"
+    assert schema_path.exists()
