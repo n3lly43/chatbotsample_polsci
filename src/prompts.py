@@ -94,7 +94,7 @@ problems.
 
 Run through this 9-point verification checklist and report results:
 
-1. Does every factual claim have a citation [N] endnote?
+1. Does every factual claim have a numbered citation endnote (e.g. [1], [2])?
 2. Are all citations grounded in the provided context?
 3. Are there any claims that appear fabricated or hallucinated?
 4. Are direct quotes accurately reproduced from the context?

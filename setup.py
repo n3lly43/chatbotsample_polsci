@@ -48,7 +48,7 @@ def generate_config(
         "retrieval": {
             "chunk_size": 1000,
             "chunk_overlap": 100,
-            "top_k": 5,
+            "top_k": 10,
         },
         "web_search": {
             "enabled": web_search,

@@ -14,7 +14,7 @@ def retrieve_from_vectordb(query: str, cfg: dict) -> list[dict]:
     """Retrieve relevant chunks from ChromaDB."""
     from src.ingest import get_chroma_collection
 
-    top_k = cfg.get("retrieval", {}).get("top_k", 5)
+    top_k = cfg.get("retrieval", {}).get("top_k", 10)
     collection = get_chroma_collection(cfg)
 
     if collection.count() == 0:
