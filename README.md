@@ -11,7 +11,6 @@ A **citation-verified research assistant chatbot** that answers questions using 
 - [What This Does](#what-this-does)
 - [Prerequisites](#prerequisites)
 - [Installation (Step by Step)](#installation-step-by-step)
-- [Quick Start Guide](#quick-start-guide)
 - [Supported File Formats](#supported-file-formats)
 - [Using the Chatbot](#using-the-chatbot)
   - [Terminal Interface (CLI)](#terminal-interface-cli)
@@ -99,7 +98,7 @@ cd chatbotsample_api
 If you don't have `git`, download the ZIP file from GitHub and unzip it. Then open a terminal and navigate to the unzipped folder:
 
 ```bash
-cd path/to/rag-research-chatbot
+cd path/to/chatbotsample_api
 ```
 
 ### 2. Install dependencies
