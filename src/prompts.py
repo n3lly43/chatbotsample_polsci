@@ -132,9 +132,13 @@ RULES for SEARCH:
 - Expand abbreviations and acronyms (e.g., "HR" -> "human rights")
 - Resolve pronouns using conversation history (e.g., "they" -> the entity from prior turn)
 - Add relevant domain-specific keywords that would match document content
-- Keep the reformulated query concise (15-40 words)
+- Keep the reformulated search_query concise (15-40 words)
 - Preserve the user's original intent -- do NOT change what they're asking about
 - If the query is already clear and specific, return it with minimal changes
+- Also produce a display_query: a clear, complete natural-language question
+  that captures the user's full intent (including any clarification context).
+  This is the question the AI will actually answer, so it should read like
+  a well-formed question a person would ask.
 
 RULES for CLARIFY:
 - ONLY ask for clarification when the question is genuinely ambiguous
@@ -152,7 +156,8 @@ USER'S QUESTION: {query}
 Respond in JSON:
 {{
   "action": "search" or "clarify",
-  "search_query": "reformulated search query (only if action is search)",
+  "search_query": "keyword-optimized query for vector search (only if action is search)",
+  "display_query": "clear natural-language question for the AI to answer (only if action is search)",
   "clarification_question": "question to ask (only if action is clarify)",
   "reasoning": "one sentence explaining your choice"
 }}
@@ -187,9 +192,14 @@ def build_query_understanding_prompt(
 
     return QUERY_UNDERSTANDING_PROMPT_TEMPLATE.format(
         domain=domain,
-        history=history_str,
-        query=query,
+        history=_escape_braces(history_str),
+        query=_escape_braces(query),
     )
+
+
+def _escape_braces(text: str) -> str:
+    """Escape curly braces in user-supplied text for safe use with str.format()."""
+    return text.replace("{", "{{").replace("}", "}}")
 
 
 def build_prompt(context: str, bot_name: str, domain: str) -> str:
@@ -206,7 +216,7 @@ def build_prompt(context: str, bot_name: str, domain: str) -> str:
     return SYSTEM_PROMPT_TEMPLATE.format(
         bot_name=bot_name,
         domain=domain,
-        context=context,
+        context=_escape_braces(context),
     )
 
 
@@ -238,8 +248,8 @@ def build_verification_prompt(
         else "No similarity flags detected."
     )
     return VERIFICATION_PROMPT_TEMPLATE.format(
-        response=response,
-        context=context,
-        phrase_flags=phrase_str,
-        similarity_flags=similarity_str,
+        response=_escape_braces(response),
+        context=_escape_braces(context),
+        phrase_flags=_escape_braces(phrase_str),
+        similarity_flags=_escape_braces(similarity_str),
     )

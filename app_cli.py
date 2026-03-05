@@ -99,7 +99,7 @@ def _format_sources(retrieval_result: dict) -> str:
     if db_results:
         lines.append("Local Sources:")
         for i, chunk in enumerate(db_results, 1):
-            meta = chunk["metadata"]
+            meta = chunk.get("metadata", {})
             source = meta.get("source", "unknown")
             page = meta.get("page", "?")
             dataset = meta.get("dataset", "")
@@ -110,11 +110,11 @@ def _format_sources(retrieval_result: dict) -> str:
             lines.append("")
         lines.append("Web Sources:")
         for i, r in enumerate(web_results, 1):
-            year_str = f" ({r['year']})" if r.get("year") else ""
+            year_str = f" ({r.get('year', '')})" if r.get("year") else ""
             lines.append(f"  [{i}] {r.get('authors', 'Unknown')}{year_str}. "
                          f"\"{r.get('title', 'Untitled')}\"")
             if r.get("url"):
-                lines.append(f"      {r['url']}")
+                lines.append(f"      {r.get('url', '')}")
 
     return "\n".join(lines)
 
@@ -164,7 +164,7 @@ def _handle_model_switch(cfg: dict) -> None:
     try:
         idx = int(choice) - 1
         if 0 <= idx < len(models):
-            cfg["llm"]["model"] = models[idx]
+            cfg.setdefault("llm", {})["model"] = models[idx]
             console.print(f"[green]Model switched to: {models[idx]}[/green]")
         else:
             console.print("[red]Invalid selection.[/red]")
@@ -274,6 +274,7 @@ def main() -> None:
 
         original_query = user_input
         search_query = user_input
+        display_query = user_input
 
         if qu_enabled:
             with console.status("[bold blue]Understanding your question...[/bold blue]"):
@@ -284,12 +285,12 @@ def main() -> None:
                     )
                 except Exception as e:
                     console.print(f"[yellow]Query understanding failed, using raw query: {e}[/yellow]")
-                    qu_result = {"action": "search", "search_query": user_input, "original_query": user_input}
+                    qu_result = {"action": "search", "search_query": user_input, "display_query": user_input, "original_query": user_input}
 
             # Handle clarification
             clarification_rounds = 0
-            while qu_result["action"] == "clarify" and clarification_rounds < max_clarifications:
-                console.print(f"\n[bold yellow]Clarification needed:[/bold yellow] {qu_result['clarification_question']}")
+            while qu_result.get("action") == "clarify" and clarification_rounds < max_clarifications:
+                console.print(f"\n[bold yellow]Clarification needed:[/bold yellow] {qu_result.get('clarification_question', 'Could you be more specific?')}")
                 try:
                     clarification = input("You> ").strip()
                 except (EOFError, KeyboardInterrupt):
@@ -304,16 +305,15 @@ def main() -> None:
                             state.get("conversation_history", []),
                         )
                     except Exception:
-                        qu_result = {"action": "search", "search_query": combined, "original_query": user_input}
+                        qu_result = {"action": "search", "search_query": combined, "display_query": combined, "original_query": user_input}
                 clarification_rounds += 1
 
             # After max clarification rounds, force search
-            if qu_result["action"] == "clarify":
+            if qu_result.get("action") == "clarify":
                 qu_result["action"] = "search"
-                # search_query fallback is already set in _parse_qu_result
 
             search_query = qu_result.get("search_query", user_input)
-            original_query = qu_result.get("original_query", user_input)
+            display_query = qu_result.get("display_query", user_input)
 
             # Show reformulated query if different from original
             if search_query != user_input:
@@ -332,7 +332,7 @@ def main() -> None:
         # ── Generate + verify ───────────────────────────────────────────
         with console.status("[bold blue]Generating response...[/bold blue]"):
             try:
-                result = verify_and_respond(original_query, retrieval_result, effective_cfg)
+                result = verify_and_respond(display_query, retrieval_result, effective_cfg)
             except Exception as e:
                 console.print(f"[red]Generation error: {e}[/red]")
                 continue
@@ -341,11 +341,11 @@ def main() -> None:
         history = state.get("conversation_history", [])
         max_history = qu_cfg.get("max_history", 6)
         history.append({"role": "user", "content": user_input})
-        history.append({"role": "assistant", "content": result["response"]})
+        history.append({"role": "assistant", "content": result.get("response", "")})
         state["conversation_history"] = history[-max_history:]
 
         # ── Display response ─────────────────────────────────────────────
-        response_text = result["response"]
+        response_text = result.get("response", "")
 
         # Verification status line
         status_parts = []

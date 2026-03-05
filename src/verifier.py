@@ -218,7 +218,7 @@ def verify_and_respond(
             "iterations": 0,
         }
 
-    context = retrieval_result["context"]
+    context = retrieval_result.get("context", "")
     bot_name = cfg.get("chatbot", {}).get("name", "ResearchBot")
     domain = cfg.get("chatbot", {}).get("domain", "research")
     llm_cfg = cfg.get("llm", {})
@@ -279,51 +279,9 @@ def verify_and_respond(
         # Verification failed — attempt correction
         error_count = vr.get("error_count", len(vr.get("errors", [])))
 
-        if iteration == 1 and error_count <= 2:
-            # Minor errors on first try: correct once, then re-verify
-            correction_prompt = (
-                f"Your previous response had {error_count} verification "
-                f"error(s):\n"
-                + json.dumps(vr.get("errors", []), indent=2)
-                + "\n\nRewrite your response to fix these issues. "
-                "Use ONLY the provided context. Keep all citation rules."
-            )
-            response = generate(
-                system_prompt, correction_prompt, cfg, max_tokens=soft_max
-            )
-            # Re-verify the correction
-            phrase_flags_2 = scan_warning_phrases(response)
-            sim_flags_2 = compute_similarity_flags(response, context, cfg)
-            vp2 = build_verification_prompt(
-                response,
-                context,
-                [f["message"] for f in phrase_flags_2],
-                [f["message"] for f in sim_flags_2],
-            )
-            raw2 = generate(
-                "You are a strict verification agent. Return only JSON.",
-                vp2,
-                cfg,
-                max_tokens=1024,
-            )
-            vr2 = parse_verification_result(raw2)
-            if vr2.get("pass", False):
-                return {
-                    "response": response,
-                    "refused": False,
-                    "verification_passed": True,
-                    "iterations": iteration,
-                }
-            # Correction did not pass — refuse
-            return {
-                "response": REFUSAL_AFTER_VERIFICATION,
-                "refused": True,
-                "verification_passed": False,
-                "iterations": iteration,
-            }
-
-        # More than 2 errors or subsequent iterations: correct and loop
+        # Correct and loop for re-verification
         correction_prompt = (
+            f"The user's original question was: {query}\n\n"
             f"Your previous response failed verification with "
             f"{error_count} error(s):\n"
             + json.dumps(vr.get("errors", []), indent=2)

@@ -1,9 +1,8 @@
 """Reader for PDF files."""
 
-from PyPDF2 import PdfReader
-
 
 def read_pdf(file_path: str) -> list[dict]:
+    from PyPDF2 import PdfReader
     reader = PdfReader(file_path)
     pages = []
     for i, page in enumerate(reader.pages):

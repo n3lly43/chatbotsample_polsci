@@ -22,8 +22,9 @@ def split_text_recursive(text: str, chunk_size: int, chunk_overlap: int,
 
     if _sep_index >= len(separators):
         # Last resort: character split
+        step = max(1, chunk_size - chunk_overlap)
         chunks = []
-        for i in range(0, len(text), chunk_size - chunk_overlap):
+        for i in range(0, len(text), step):
             chunk = text[i:i + chunk_size]
             if chunk.strip():
                 chunks.append(chunk.strip())
@@ -63,14 +64,17 @@ def chunk_documents(pages: list[dict], source_name: str, dataset_name: str,
                     chunk_size: int = 1000, chunk_overlap: int = 100) -> list[dict]:
     """Split pages into smaller chunks with metadata."""
     chunks = []
+    global_chunk_index = 0
     for page_info in pages:
-        text = page_info["text"]
+        text = page_info.get("text", "")
+        if not text.strip():
+            continue
         if len(text) > MAX_CHUNK_CHARS:
             splits = split_text_recursive(text, MAX_CHUNK_CHARS, chunk_overlap)
         else:
             splits = split_text_recursive(text, chunk_size, chunk_overlap)
 
-        for j, split in enumerate(splits):
+        for split in splits:
             if len(split) > MAX_CHUNK_CHARS:
                 split = split[:MAX_CHUNK_CHARS]
             chunks.append({
@@ -78,10 +82,11 @@ def chunk_documents(pages: list[dict], source_name: str, dataset_name: str,
                 "metadata": {
                     "source": source_name,
                     "dataset": dataset_name,
-                    "page": str(page_info["page"]),
-                    "chunk_index": j,
+                    "page": str(page_info.get("page", "?")),
+                    "chunk_index": global_chunk_index,
                 },
             })
+            global_chunk_index += 1
     return chunks
 
 
@@ -114,7 +119,8 @@ def get_chroma_collection(cfg: dict):
     """Get or create the ChromaDB collection with embeddings."""
     db_path = cfg.get("paths", {}).get("vector_db", "chroma_db")
     if not os.path.isabs(db_path):
-        db_path = os.path.join(os.path.dirname(os.path.abspath("config.yaml")), db_path)
+        project_root = Path(__file__).resolve().parent.parent
+        db_path = os.path.join(str(project_root), db_path)
 
     client = chromadb.PersistentClient(path=db_path)
 
@@ -147,9 +153,8 @@ def ingest_documents(cfg: dict = None, documents_dir: str = None) -> int:
     if documents_dir is None:
         documents_dir = cfg.get("paths", {}).get("knowledge_base", "knowledge_base")
         if not os.path.isabs(documents_dir):
-            documents_dir = os.path.join(
-                os.path.dirname(os.path.abspath("config.yaml")), documents_dir
-            )
+            project_root = Path(__file__).resolve().parent.parent
+            documents_dir = os.path.join(str(project_root), documents_dir)
 
     files = discover_files(documents_dir)
     if not files:
@@ -176,7 +181,7 @@ def ingest_documents(cfg: dict = None, documents_dir: str = None) -> int:
     existing = collection.count()
     if existing > 0:
         print(f"Clearing {existing} existing chunks...\n")
-        all_ids = collection.get()["ids"]
+        all_ids = collection.get().get("ids", [])
         if all_ids:
             for i in range(0, len(all_ids), 5000):
                 collection.delete(ids=all_ids[i:i + 5000])
@@ -203,9 +208,9 @@ def ingest_documents(cfg: dict = None, documents_dir: str = None) -> int:
         batch_size = 100
         for i in range(0, len(chunks), batch_size):
             batch = chunks[i:i + batch_size]
-            ids = [f"{dataset_name}_{file_path.stem}_{i + j}" for j in range(len(batch))]
-            documents = [c["text"] for c in batch]
-            metadatas = [c["metadata"] for c in batch]
+            ids = [f"{dataset_name}_{file_path.stem}{file_path.suffix}_{i + j}" for j in range(len(batch))]
+            documents = [c.get("text", "") for c in batch]
+            metadatas = [c.get("metadata", {}) for c in batch]
             collection.add(ids=ids, documents=documents, metadatas=metadatas)
 
         total_chunks += len(chunks)

@@ -57,3 +57,26 @@ def test_build_query_understanding_prompt_no_history():
     prompt = build_query_understanding_prompt("test query", "research", [])
     assert "No prior conversation" in prompt
     assert "test query" in prompt
+
+
+def test_build_prompt_with_curly_braces_in_context():
+    """Regression: context containing {placeholder} must not crash str.format()."""
+    from src.prompts import build_prompt
+    context = "The variable {unknown_var} was set to {value}."
+    prompt = build_prompt(context, "Bot", "testing")
+    assert "{unknown_var}" in prompt
+    assert "{value}" in prompt
+
+
+def test_build_verification_prompt_with_curly_braces():
+    """Regression: braces in response/context must not crash str.format()."""
+    from src.prompts import build_verification_prompt
+    prompt = build_verification_prompt(
+        "The {result} showed improvement.",
+        "Data: {raw_value} was recorded.",
+        ["flag with {braces}"],
+        [],
+    )
+    assert "{result}" in prompt
+    assert "{raw_value}" in prompt
+    assert "{braces}" in prompt

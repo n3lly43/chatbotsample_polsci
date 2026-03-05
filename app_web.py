@@ -153,7 +153,7 @@ def render_chat():
         max_history = qu_cfg.get("max_history", 6)
 
         search_query = combined
-        response_query = combined  # query passed to verify_and_respond
+        display_query = combined
         max_clarifications = qu_cfg.get("max_clarifications", 1)
 
         if qu_enabled:
@@ -167,12 +167,12 @@ def render_chat():
             try:
                 qu_result = understand_query(combined, cfg, history)
             except Exception:
-                qu_result = {"action": "search", "search_query": combined, "original_query": combined}
+                qu_result = {"action": "search", "search_query": combined, "display_query": combined, "original_query": original_query}
 
-            if qu_result["action"] == "clarify" and pending is None and max_clarifications > 0:
+            if qu_result.get("action") == "clarify" and pending is None and max_clarifications > 0:
                 # Ask clarification — store original query, show question
                 st.session_state.pending_clarification = original_query
-                clarification_msg = f"**Before I search, could you clarify?** {qu_result['clarification_question']}"
+                clarification_msg = f"**Before I search, could you clarify?** {qu_result.get('clarification_question', 'Could you be more specific?')}"
                 st.session_state.messages.append(
                     {"role": "assistant", "content": clarification_msg}
                 )
@@ -181,16 +181,22 @@ def render_chat():
                 return
 
             search_query = qu_result.get("search_query", combined)
+            display_query = qu_result.get("display_query", original_query)
 
         # Generate assistant response
         with st.chat_message("assistant"):
             with st.status("Searching knowledge base...", expanded=True) as status:
                 # Show reformulated query if different
-                if search_query != response_query:
+                if search_query != original_query:
                     status.update(label=f'Searching for: "{search_query}"...')
 
                 # Retrieval
-                retrieval_result = retrieve(search_query, cfg)
+                try:
+                    retrieval_result = retrieve(search_query, cfg)
+                except Exception as e:
+                    status.update(label=f"Retrieval error: {e}", state="error")
+                    st.error(f"Retrieval failed: {e}")
+                    return
                 st.session_state.last_retrieval = retrieval_result
 
                 n_local = len(retrieval_result.get("db_results", []))
@@ -199,16 +205,21 @@ def render_chat():
                     label=f"Found {n_local} local + {n_web} web sources. Generating response..."
                 )
 
-                # Verification and response generation (uses combined query
-                # so the LLM answers the clarified question, not just the original)
-                result = verify_and_respond(response_query, retrieval_result, cfg)
+                # Response generation uses display_query — a clear,
+                # complete question that incorporates any clarification context
+                try:
+                    result = verify_and_respond(display_query, retrieval_result, cfg)
+                except Exception as e:
+                    status.update(label=f"Generation error: {e}", state="error")
+                    st.error(f"Response generation failed: {e}")
+                    return
 
                 # Update status based on verification outcome
                 if result.get("refused"):
                     status.update(label="No sufficient sources found.", state="error")
                 elif result.get("verification_passed") is True:
                     status.update(
-                        label=f"Verified ({result['iterations']} iteration(s)). "
+                        label=f"Verified ({result.get('iterations', 0)} iteration(s)). "
                               f"{n_local} local + {n_web} web sources.",
                         state="complete",
                     )
@@ -224,11 +235,11 @@ def render_chat():
                     )
 
             # Display the response
-            st.markdown(result["response"])
+            st.markdown(result.get("response", ""))
 
         # Store assistant message
         st.session_state.messages.append(
-            {"role": "assistant", "content": result["response"]}
+            {"role": "assistant", "content": result.get("response", "")}
         )
 
 

@@ -40,7 +40,7 @@ def search_papers(query: str, limit: int = 5) -> list[dict]:
         url = paper.get("url", "")
         external_ids = paper.get("externalIds") or {}
         if external_ids.get("DOI"):
-            url = f"https://doi.org/{external_ids['DOI']}"
+            url = f"https://doi.org/{external_ids.get('DOI', '')}"
         results.append({
             "title": paper.get("title", "Untitled"), "authors": authors,
             "year": paper.get("year"), "abstract": abstract, "url": url,

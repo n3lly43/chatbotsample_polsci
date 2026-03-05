@@ -11,7 +11,10 @@ def generate(system_prompt: str, user_message: str, api_key: str,
         generation_config=genai.GenerationConfig(temperature=temperature, max_output_tokens=max_tokens),
     )
     response = gen_model.generate_content(user_message)
-    return response.text
+    try:
+        return response.text
+    except ValueError:
+        return ""
 
 def list_models(api_key: str) -> list[str]:
     try:

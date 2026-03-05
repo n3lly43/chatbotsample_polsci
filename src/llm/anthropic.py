@@ -11,7 +11,9 @@ def generate(system_prompt: str, user_message: str, api_key: str,
         system=system_prompt,
         messages=[{"role": "user", "content": user_message}],
     )
-    return response.content[0].text
+    if not response.content:
+        return ""
+    return response.content[0].text or ""
 
 def list_models(api_key: str) -> list[str]:
     try:

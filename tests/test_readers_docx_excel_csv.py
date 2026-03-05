@@ -1,6 +1,7 @@
 import pytest
 
 def test_docx_reader(tmp_path):
+    pytest.importorskip("docx")
     from docx import Document
     doc = Document()
     doc.add_paragraph("First paragraph of the document.")
@@ -13,6 +14,7 @@ def test_docx_reader(tmp_path):
     assert "First paragraph" in pages[0]["text"]
 
 def test_xlsx_reader(tmp_path):
+    pytest.importorskip("openpyxl")
     import openpyxl
     wb = openpyxl.Workbook()
     ws = wb.active

@@ -22,7 +22,7 @@ def load_config(config_path: str = None) -> dict:
         load_dotenv(str(env_path))
 
     with open(config_path, "r") as f:
-        cfg = yaml.safe_load(f)
+        cfg = yaml.safe_load(f) or {}
 
     for provider, env_var in _ENV_KEY_MAP.items():
         env_val = os.environ.get(env_var)

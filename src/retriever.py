@@ -35,13 +35,16 @@ def retrieve_from_vectordb(query: str, cfg: dict) -> list[dict]:
     )
 
     chunks = []
-    for i in range(len(results["documents"][0])):
-        distance = results["distances"][0][i]
+    documents = results.get("documents", [[]])[0]
+    distances = results.get("distances", [[]])[0]
+    metadatas = results.get("metadatas", [[]])[0]
+    for i in range(len(documents)):
+        distance = distances[i]
         if distance > max_distance:
             continue
         chunks.append({
-            "text": results["documents"][0][i],
-            "metadata": results["metadatas"][0][i],
+            "text": documents[i],
+            "metadata": metadatas[i],
             "distance": distance,
         })
     return chunks
@@ -54,7 +57,7 @@ def format_db_results_as_context(chunks: list[dict]) -> str:
 
     parts = ["=== Local Document Results (PRIMARY — always trust these over web sources) ===\n"]
     for i, chunk in enumerate(chunks, 1):
-        meta = chunk["metadata"]
+        meta = chunk.get("metadata", {})
         dataset = meta.get("dataset", "")
         dataset_label = f" [Dataset: {dataset}]" if dataset else ""
         source_path = f"knowledge_base/{meta.get('source', 'unknown')}"
@@ -62,7 +65,7 @@ def format_db_results_as_context(chunks: list[dict]) -> str:
             f"[CHUNK-LOCAL-{i:03d}] From: {meta.get('source', 'unknown')}, "
             f"Page/Section {meta.get('page', '?')}{dataset_label}\n"
             f"  Path: {source_path}\n"
-            f"  {chunk['text']}\n"
+            f"  {chunk.get('text', '')}\n"
         )
     return "\n".join(parts)
 

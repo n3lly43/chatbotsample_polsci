@@ -26,7 +26,8 @@ def understand_query(
     Returns:
         Dict with keys:
         - ``action``: ``"search"`` or ``"clarify"``
-        - ``search_query``: Reformulated query (always present)
+        - ``search_query``: Keyword-optimized query for retrieval (always present)
+        - ``display_query``: Clear natural-language question for response generation
         - ``original_query``: The raw user input
         - ``clarification_question``: Question to ask (only if action is "clarify")
     """
@@ -37,6 +38,7 @@ def understand_query(
         return {
             "action": "search",
             "search_query": user_query,
+            "display_query": user_query,
             "original_query": user_query,
         }
 
@@ -63,6 +65,7 @@ def understand_query(
         result = {
             "action": "search",
             "search_query": user_query,
+            "display_query": user_query,
             "original_query": user_query,
         }
 
@@ -96,6 +99,7 @@ def _parse_qu_result(raw: str, original_query: str) -> dict:
         return {
             "action": "search",
             "search_query": original_query,
+            "display_query": original_query,
             "original_query": original_query,
         }
 
@@ -105,6 +109,7 @@ def _parse_qu_result(raw: str, original_query: str) -> dict:
         return {
             "action": "clarify",
             "search_query": original_query,  # fallback if clarification is skipped
+            "display_query": original_query,  # fallback if clarification is skipped
             "original_query": original_query,
             "clarification_question": parsed.get(
                 "clarification_question", "Could you be more specific?"
@@ -112,8 +117,11 @@ def _parse_qu_result(raw: str, original_query: str) -> dict:
         }
 
     # action == "search"
+    search_query = parsed.get("search_query", original_query)
+    display_query = parsed.get("display_query", original_query)
     return {
         "action": "search",
-        "search_query": parsed.get("search_query", original_query),
+        "search_query": search_query,
+        "display_query": display_query,
         "original_query": original_query,
     }

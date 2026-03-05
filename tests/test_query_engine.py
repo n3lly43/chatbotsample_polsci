@@ -22,6 +22,7 @@ def _mock_generate_search(system_prompt, user_message, cfg, **kwargs):
     return json.dumps({
         "action": "search",
         "search_query": "reformulated test query about human rights",
+        "display_query": "What are the key human rights issues in this test query?",
         "reasoning": "expanded for better retrieval",
     })
 
@@ -46,6 +47,7 @@ def test_understand_query_reformulates():
         result = understand_query("test query", _make_cfg())
     assert result["action"] == "search"
     assert result["search_query"] == "reformulated test query about human rights"
+    assert result["display_query"] == "What are the key human rights issues in this test query?"
     assert result["original_query"] == "test query"
 
 
@@ -56,8 +58,9 @@ def test_understand_query_clarifies():
     assert result["action"] == "clarify"
     assert "clarification_question" in result
     assert result["original_query"] == "AI"
-    # search_query should still be present as fallback
+    # search_query and display_query should still be present as fallback
     assert "search_query" in result
+    assert "display_query" in result
 
 
 def test_understand_query_preserves_original():
@@ -84,6 +87,7 @@ def test_understand_query_disabled():
     result = understand_query("test query", _make_cfg(enabled=False))
     assert result["action"] == "search"
     assert result["search_query"] == "test query"
+    assert result["display_query"] == "test query"
     assert result["original_query"] == "test query"
 
 
@@ -93,6 +97,7 @@ def test_understand_query_fallback_on_error():
         result = understand_query("test query", _make_cfg())
     assert result["action"] == "search"
     assert result["search_query"] == "test query"
+    assert result["display_query"] == "test query"
 
 
 def test_parse_qu_result_malformed_json():
@@ -100,6 +105,7 @@ def test_parse_qu_result_malformed_json():
     result = _parse_qu_result("not json at all", "original query")
     assert result["action"] == "search"
     assert result["search_query"] == "original query"
+    assert result["display_query"] == "original query"
 
 
 def test_parse_qu_result_embedded_json():
@@ -108,3 +114,19 @@ def test_parse_qu_result_embedded_json():
     result = _parse_qu_result(raw, "original")
     assert result["action"] == "search"
     assert result["search_query"] == "better query"
+    # display_query falls back to original when not in JSON
+    assert result["display_query"] == "original"
+
+
+def test_parse_qu_result_with_display_query():
+    from src.query_engine import _parse_qu_result
+    raw = json.dumps({
+        "action": "search",
+        "search_query": "keyword optimized query",
+        "display_query": "What is the effect of AI on human rights?",
+        "reasoning": "clarified and expanded",
+    })
+    result = _parse_qu_result(raw, "AI human rights")
+    assert result["search_query"] == "keyword optimized query"
+    assert result["display_query"] == "What is the effect of AI on human rights?"
+    assert result["original_query"] == "AI human rights"
