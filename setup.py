@@ -66,9 +66,14 @@ def generate_config(
             "max_iterations": 3,
             "strict_mode": True,
         },
+        "sql": {
+            "enabled": True,
+            "max_rows": 200,
+        },
         "paths": {
             "knowledge_base": "knowledge_base",
             "vector_db": "chroma_db",
+            "sql_db": "sql_db",
         },
     }
     return yaml.dump(config, default_flow_style=False, sort_keys=False)

@@ -28,6 +28,10 @@ def test_generate_config_yaml():
     assert cfg["query_understanding"]["enabled"] is True
     assert cfg["query_understanding"]["max_history"] == 6
     assert cfg["query_understanding"]["max_clarifications"] == 1
+    # SQL config
+    assert cfg["paths"]["sql_db"] == "sql_db"
+    assert cfg["sql"]["enabled"] is True
+    assert cfg["sql"]["max_rows"] == 200
 
 def test_generate_env_file():
     from setup import generate_env
