@@ -176,8 +176,6 @@ Found 5 files across 2 dataset(s):
   NAVCO 2.0: 3 files (.csv, .pdf)
   Survey Data: 2 files (.docx, .xlsx)
 
-Processing: NAVCO 2.0/Chenoweth_Stephan_2011.pdf
-  -> 47 chunks
 Processing: NAVCO 2.0/NAVCO2JPRcodebook2013.pdf
   -> 12 chunks
 ...
