@@ -140,7 +140,13 @@ def render_chat():
         pending = st.session_state.pending_clarification
         if pending is not None:
             # This prompt is the user's clarification answer
-            combined = f"{pending} — {prompt}"
+            # Include the clarification question for context
+            pending_question = st.session_state.get("pending_clarification_question", "")
+            if pending_question:
+                combined = f"{pending} (Clarification: Q: {pending_question} A: {prompt})"
+            else:
+                combined = f"{pending} — {prompt}"
+            st.session_state.pending_clarification_question = None
             original_query = pending
             st.session_state.pending_clarification = None
         else:
@@ -172,8 +178,9 @@ def render_chat():
                 qu_result = {"action": "search", "search_query": combined, "display_query": combined, "original_query": original_query}
 
             if qu_result.get("action") == "clarify" and pending is None and max_clarifications > 0:
-                # Ask clarification — store original query, show question
+                # Ask clarification — store original query and question for context
                 st.session_state.pending_clarification = original_query
+                st.session_state.pending_clarification_question = qu_result.get('clarification_question', 'Could you be more specific?')
                 clarification_msg = f"**Before I search, could you clarify?** {qu_result.get('clarification_question', 'Could you be more specific?')}"
                 st.session_state.messages.append(
                     {"role": "assistant", "content": clarification_msg}

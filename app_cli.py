@@ -292,14 +292,15 @@ def main() -> None:
             # Handle clarification
             clarification_rounds = 0
             while qu_result.get("action") == "clarify" and clarification_rounds < max_clarifications:
-                console.print(f"\n[bold yellow]Clarification needed:[/bold yellow] {qu_result.get('clarification_question', 'Could you be more specific?')}")
+                clarification_question = qu_result.get('clarification_question', 'Could you be more specific?')
+                console.print(f"\n[bold yellow]Clarification needed:[/bold yellow] {clarification_question}")
                 try:
                     clarification = input("You> ").strip()
                 except (EOFError, KeyboardInterrupt):
                     clarification = ""
                 if not clarification:
                     break
-                combined = f"{user_input} — {clarification}"
+                combined = f"{user_input} (Clarification: Q: {clarification_question} A: {clarification})"
                 with console.status("[bold blue]Understanding your question...[/bold blue]"):
                     try:
                         qu_result = understand_query(

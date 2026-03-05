@@ -175,6 +175,9 @@ When choosing a route:
   (e.g., "PTS scores for China", "how many countries", "average GDP")
 - "vector" — for conceptual, definitional, or methodology questions
   (e.g., "what does PTS measure?", "explain the methodology")
+- "vector" — for meta-questions about what data is available
+  (e.g., "what datasets do you have?", "what is in the knowledge base?")
+  These are answered by codebooks and documentation, not by SQL queries.
 - "both" — for mixed questions combining concepts with data
   (e.g., "explain PTS methodology and show China's scores")
 
