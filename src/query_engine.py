@@ -1,10 +1,25 @@
 """Query understanding layer: reformulates user queries for better retrieval."""
 
 import json
+import os
 import re
 
 from src.llm import generate
 from src.prompts import build_query_understanding_prompt
+
+
+def _load_sql_schema_summary(sql_db_dir: str) -> str:
+    """Load SQL schema summary from sql_schemas.json if it exists."""
+    schema_path = os.path.join(sql_db_dir, "sql_schemas.json")
+    if not os.path.exists(schema_path):
+        return ""
+    try:
+        with open(schema_path, "r", encoding="utf-8") as f:
+            schema = json.load(f)
+        from src.sql_retriever import build_schema_summary
+        return build_schema_summary(schema)
+    except Exception:
+        return ""
 
 
 def understand_query(
@@ -40,6 +55,8 @@ def understand_query(
             "search_query": user_query,
             "display_query": user_query,
             "original_query": user_query,
+            "route": "vector",
+            "sql_query": None,
         }
 
     domain = cfg.get("chatbot", {}).get("domain", "research")
@@ -50,7 +67,20 @@ def understand_query(
     if len(history) > max_history:
         history = history[-max_history:]
 
-    prompt = build_query_understanding_prompt(user_query, domain, history)
+    # Load SQL schema summary for prompt injection
+    sql_enabled = cfg.get("sql", {}).get("enabled", True)
+    schema_summary = ""
+    if sql_enabled:
+        sql_db_dir = cfg.get("paths", {}).get("sql_db", "sql_db")
+        if not os.path.isabs(sql_db_dir):
+            from pathlib import Path as _Path
+            project_root = _Path(__file__).resolve().parent.parent
+            sql_db_dir = os.path.join(str(project_root), sql_db_dir)
+        schema_summary = _load_sql_schema_summary(sql_db_dir)
+
+    prompt = build_query_understanding_prompt(
+        user_query, domain, history, sql_schema_summary=schema_summary,
+    )
 
     try:
         raw = generate(
@@ -67,6 +97,8 @@ def understand_query(
             "search_query": user_query,
             "display_query": user_query,
             "original_query": user_query,
+            "route": "vector",
+            "sql_query": None,
         }
 
     return result
@@ -101,6 +133,8 @@ def _parse_qu_result(raw: str, original_query: str) -> dict:
             "search_query": original_query,
             "display_query": original_query,
             "original_query": original_query,
+            "route": "vector",
+            "sql_query": None,
         }
 
     action = parsed.get("action", "search")
@@ -114,14 +148,22 @@ def _parse_qu_result(raw: str, original_query: str) -> dict:
             "clarification_question": parsed.get(
                 "clarification_question", "Could you be more specific?"
             ),
+            "route": "vector",
+            "sql_query": None,
         }
 
     # action == "search"
     search_query = parsed.get("search_query", original_query)
     display_query = parsed.get("display_query", original_query)
+    route = parsed.get("route", "vector")
+    if route not in ("sql", "vector", "both"):
+        route = "vector"
+    sql_query = parsed.get("sql_query") if route in ("sql", "both") else None
     return {
         "action": "search",
         "search_query": search_query,
         "display_query": display_query,
         "original_query": original_query,
+        "route": route,
+        "sql_query": sql_query,
     }

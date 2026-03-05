@@ -154,6 +154,8 @@ def render_chat():
 
         search_query = combined
         display_query = combined
+        route = "vector"
+        sql_query = None
         max_clarifications = qu_cfg.get("max_clarifications", 1)
 
         if qu_enabled:
@@ -182,6 +184,8 @@ def render_chat():
 
             search_query = qu_result.get("search_query", combined)
             display_query = qu_result.get("display_query", original_query)
+            route = qu_result.get("route", "vector")
+            sql_query = qu_result.get("sql_query")
 
         # Generate assistant response
         with st.chat_message("assistant"):
@@ -192,7 +196,7 @@ def render_chat():
 
                 # Retrieval
                 try:
-                    retrieval_result = retrieve(search_query, cfg)
+                    retrieval_result = retrieve(search_query, cfg, route=route, sql_query=sql_query)
                 except Exception as e:
                     status.update(label=f"Retrieval error: {e}", state="error")
                     st.error(f"Retrieval failed: {e}")
@@ -201,9 +205,12 @@ def render_chat():
 
                 n_local = len(retrieval_result.get("db_results", []))
                 n_web = len(retrieval_result.get("web_results", []))
-                status.update(
-                    label=f"Found {n_local} local + {n_web} web sources. Generating response..."
-                )
+                n_sql = len(retrieval_result.get("sql_results", []))
+                source_label = f"Found {n_local} local"
+                if n_sql:
+                    source_label += f" + {n_sql} SQL rows"
+                source_label += f" + {n_web} web sources. Generating response..."
+                status.update(label=source_label)
 
                 # Response generation uses display_query — a clear,
                 # complete question that incorporates any clarification context

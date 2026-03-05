@@ -130,3 +130,43 @@ def test_parse_qu_result_with_display_query():
     assert result["search_query"] == "keyword optimized query"
     assert result["display_query"] == "What is the effect of AI on human rights?"
     assert result["original_query"] == "AI human rights"
+
+
+def test_parse_qu_result_with_route_and_sql():
+    from src.query_engine import _parse_qu_result
+    raw = '{"action": "search", "route": "sql", "search_query": "PTS China", "display_query": "PTS scores for China?", "sql_query": "SELECT * FROM t", "reasoning": "data lookup"}'
+    result = _parse_qu_result(raw, "original")
+    assert result["route"] == "sql"
+    assert result["sql_query"] == "SELECT * FROM t"
+
+
+def test_parse_qu_result_defaults_route_to_vector():
+    from src.query_engine import _parse_qu_result
+    raw = '{"action": "search", "search_query": "test", "display_query": "test?"}'
+    result = _parse_qu_result(raw, "original")
+    assert result["route"] == "vector"
+    assert result.get("sql_query") is None
+
+
+def test_load_sql_schema_missing_file():
+    from src.query_engine import _load_sql_schema_summary
+    result = _load_sql_schema_summary("/nonexistent/path/sql_db")
+    assert result == ""
+
+
+def test_load_sql_schema_valid_file(tmp_path):
+    import json
+    from src.query_engine import _load_sql_schema_summary
+    schema_dir = tmp_path / "sql_db"
+    schema_dir.mkdir()
+    schema = {
+        "test_table": {
+            "source_file": "data.csv",
+            "columns": [{"name": "x", "type": "TEXT", "sample": ["a"]}],
+            "row_count": 10,
+        }
+    }
+    (schema_dir / "sql_schemas.json").write_text(json.dumps(schema))
+    result = _load_sql_schema_summary(str(schema_dir))
+    assert "test_table" in result
+    assert "10 rows" in result

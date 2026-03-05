@@ -80,3 +80,32 @@ def test_build_verification_prompt_with_curly_braces():
     assert "{result}" in prompt
     assert "{raw_value}" in prompt
     assert "{braces}" in prompt
+
+
+def test_qu_prompt_includes_schema_when_provided():
+    from src.prompts import build_query_understanding_prompt
+    schema_summary = "Available SQL tables:\n- t (100 rows): x (TEXT)"
+    prompt = build_query_understanding_prompt(
+        "test query", "research", [], sql_schema_summary=schema_summary,
+    )
+    assert "Available SQL tables" in prompt
+    assert "route" in prompt
+    assert "sql_query" in prompt
+
+
+def test_qu_prompt_no_schema_no_sql_fields():
+    from src.prompts import build_query_understanding_prompt
+    prompt = build_query_understanding_prompt("test query", "research", [])
+    assert "Available SQL tables" not in prompt
+
+
+def test_system_prompt_mentions_chunk_sql():
+    from src.prompts import build_prompt
+    prompt = build_prompt("context", "Bot", "research")
+    assert "CHUNK-SQL" in prompt
+
+
+def test_verification_prompt_sql_priority():
+    from src.prompts import build_verification_prompt
+    prompt = build_verification_prompt("resp", "ctx", [], [])
+    assert "CHUNK-SQL" in prompt

@@ -215,5 +215,18 @@ def ingest_documents(cfg: dict = None, documents_dir: str = None) -> int:
 
         total_chunks += len(chunks)
 
+    # ── SQL ingestion for tabular files ──────────────────────────────
+    sql_enabled = cfg.get("sql", {}).get("enabled", True)
+    if sql_enabled:
+        from src.sql_ingest import ingest_to_sql, SQL_EXTENSIONS
+        tabular_count = sum(1 for f, _ in files if f.suffix.lower() in SQL_EXTENSIONS)
+        if tabular_count > 0:
+            print(f"\nIngesting {tabular_count} tabular file(s) into SQLite...")
+            try:
+                schema = ingest_to_sql(files, documents_dir, cfg)
+                print(f"SQL ingestion complete: {len(schema)} table(s).")
+            except Exception as e:
+                print(f"SQL ingestion error (non-fatal): {e}")
+
     print(f"\nIngestion complete: {total_chunks} chunks from {len(files)} files.")
     return total_chunks
