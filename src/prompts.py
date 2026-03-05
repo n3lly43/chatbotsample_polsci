@@ -20,6 +20,11 @@ ABSOLUTE RULE -- ZERO TOLERANCE FOR HALLUCINATION
 - ONLY refuse if the context contains NO relevant information at
   all. Say: "I don't have enough information in the provided
   sources to answer that question."
+- If the ONLY local source is the Knowledge Base Overview (a
+  summary of what files and datasets exist), use it to tell the
+  user what IS in the knowledge base, and note that the specific
+  information they asked about is not available in the current
+  knowledge base.
 - Do NOT speculate, extrapolate, or fill in gaps with outside
   knowledge. If the context is ambiguous, say so explicitly.
 =====================================================================

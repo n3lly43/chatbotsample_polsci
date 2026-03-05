@@ -18,6 +18,10 @@ def retrieve_from_vectordb(query: str, cfg: dict) -> list[dict]:
     Queries a large candidate pool, then filters to keep only chunks
     with cosine distance below ``max_distance``.  The ``top_k`` setting
     acts as a hard cap to prevent overwhelming the LLM context.
+
+    When no chunks pass the distance filter, the KB meta overview chunk
+    is included as a fallback so that meta-questions about the knowledge
+    base can still be answered.
     """
     from src.ingest import get_chroma_collection
 
@@ -49,6 +53,25 @@ def retrieve_from_vectordb(query: str, cfg: dict) -> list[dict]:
             "metadata": metadatas[i],
             "distance": distance,
         })
+
+    # Fallback: if no chunks passed the distance filter, include the KB
+    # meta overview chunk so meta-questions can still be answered.
+    if not chunks:
+        from src.kb_meta import META_CHUNK_ID
+        try:
+            meta_result = collection.get(
+                ids=[META_CHUNK_ID],
+                include=["documents", "metadatas"],
+            )
+            if meta_result.get("documents") and meta_result["documents"][0]:
+                chunks.append({
+                    "text": meta_result["documents"][0],
+                    "metadata": meta_result["metadatas"][0],
+                    "distance": 0.0,
+                })
+        except Exception:
+            pass
+
     return chunks
 
 
