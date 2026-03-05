@@ -40,7 +40,7 @@ REFERENCE LIST FORMAT
 ---------------------------------------------------------------------
 At the end of every response, include a "References" section.
 
-IMPORTANT: Do NOT use chunk IDs (CHUNK-LOCAL-001, CHUNK-WEB-001, etc.)
+IMPORTANT: Do NOT use chunk IDs (CHUNK-LOCAL-001, CHUNK-SQL-001, CHUNK-WEB-001, etc.)
 in the reference list. Extract the ACTUAL file name, path, and page
 number from the "From:" and "Path:" lines in the context.
 
@@ -100,7 +100,7 @@ Run through this 9-point verification checklist and report results:
 3. Are there any claims that appear fabricated or hallucinated?
 4. Are direct quotes accurately reproduced from the context?
 5. Does the References section exist and list all cited sources?
-6. Is the source priority respected (CHUNK-LOCAL > CHUNK-WEB)?
+6. Is the source priority respected (CHUNK-LOCAL = CHUNK-SQL > CHUNK-WEB)?
 7. Are any phrase-level flags confirmed as hallucinations?
 8. Do similarity flags indicate unsupported semantic drift?
 9. Is the response length proportional to the available evidence?
@@ -148,6 +148,7 @@ RULES for CLARIFY:
 - Do NOT ask for clarification on clear questions -- even if they are broad
 - A broad question is NOT the same as an ambiguous question
 
+{sql_routing_block}
 CONVERSATION HISTORY:
 {history}
 
@@ -156,16 +157,41 @@ USER'S QUESTION: {query}
 Respond in JSON:
 {{
   "action": "search" or "clarify",
+  "route": "vector" or "sql" or "both",
   "search_query": "keyword-optimized query for vector search (only if action is search)",
   "display_query": "clear natural-language question for the AI to answer (only if action is search)",
+  "sql_query": "SQLite SELECT query (only when route is sql or both)",
   "clarification_question": "question to ask (only if action is clarify)",
   "reasoning": "one sentence explaining your choice"
 }}
 """
 
 
+_SQL_ROUTING_INSTRUCTIONS = """\
+SQL ROUTING:
+You have access to structured SQL tables in addition to vector search.
+When choosing a route:
+- "sql" — for data lookups, filtering, aggregation, counting, comparisons
+  (e.g., "PTS scores for China", "how many countries", "average GDP")
+- "vector" — for conceptual, definitional, or methodology questions
+  (e.g., "what does PTS measure?", "explain the methodology")
+- "both" — for mixed questions combining concepts with data
+  (e.g., "explain PTS methodology and show China's scores")
+
+IMPORTANT: If the user asks about data summarization, counting, averaging,
+filtering, or any question that requires looking at dataset rows, ALWAYS
+set route to "sql" or "both".
+
+When route is "sql" or "both", also provide a valid SQLite SELECT query
+in the "sql_query" field. Use only table/column names from the schema below.
+
+{schema_text}
+"""
+
+
 def build_query_understanding_prompt(
     query: str, domain: str, history: list[dict],
+    sql_schema_summary: str = "",
 ) -> str:
     """Build the query understanding prompt for pre-retrieval reformulation.
 
@@ -173,6 +199,7 @@ def build_query_understanding_prompt(
         query: The user's raw question.
         domain: Knowledge domain from config.
         history: Recent conversation messages for context resolution.
+        sql_schema_summary: Compact SQL schema summary (empty if no tables).
 
     Returns:
         Formatted query understanding prompt string.
@@ -190,10 +217,18 @@ def build_query_understanding_prompt(
     else:
         history_str = "(No prior conversation)"
 
+    if sql_schema_summary:
+        sql_routing_block = _escape_braces(
+            _SQL_ROUTING_INSTRUCTIONS.format(schema_text=sql_schema_summary)
+        )
+    else:
+        sql_routing_block = ""
+
     return QUERY_UNDERSTANDING_PROMPT_TEMPLATE.format(
         domain=domain,
         history=_escape_braces(history_str),
         query=_escape_braces(query),
+        sql_routing_block=sql_routing_block,
     )
 
 
