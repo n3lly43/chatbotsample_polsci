@@ -101,7 +101,18 @@ If you don't have `git`, download the ZIP file from GitHub and unzip it. Then op
 cd path/to/chatbotsample_api
 ```
 
-### 2. Install dependencies
+### 2. Set up a Python environment
+
+We recommend using a conda environment with **Python 3.12** (the most widely compatible version). Python 3.14+ is **not supported** due to dependency compatibility issues.
+
+```bash
+conda create -n chatbot python=3.12 -y
+conda activate chatbot
+```
+
+If you don't use conda, any Python 3.11--3.13 installation will work.
+
+### 3. Install dependencies
 
 ```bash
 pip install -r requirements.txt
@@ -111,7 +122,7 @@ This installs all the libraries the chatbot needs (AI providers, document reader
 
 > **Tip:** If `pip` doesn't work, try `pip3` instead. On some systems, Python 3 uses `pip3`.
 
-### 3. Run the setup wizard
+### 4. Run the setup wizard
 
 ```bash
 python setup.py
@@ -132,7 +143,7 @@ The wizard creates two files:
 - `config.yaml` -- your chatbot's settings
 - `.env` -- your API key (kept private, never uploaded to GitHub)
 
-### 4. Add your documents
+### 5. Add your documents
 
 Copy your research files into the `knowledge_base/` folder. You can organize them into subfolders:
 
@@ -148,7 +159,7 @@ knowledge_base/
   notes.txt
 ```
 
-### 5. Ingest (index) your documents
+### 6. Ingest (index) your documents
 
 ```bash
 python ingest.py
@@ -171,7 +182,7 @@ Processing: NAVCO 2.0/NAVCO2JPRcodebook2013.pdf
 Ingestion complete: 89 chunks from 5 files.
 ```
 
-### 6. Start the chatbot
+### 7. Start the chatbot
 
 **Terminal interface** (recommended for getting started):
 
