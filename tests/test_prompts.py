@@ -6,7 +6,7 @@ def test_build_prompt_includes_anti_hallucination():
     prompt = build_prompt("some context", "Test Bot", "testing domain")
     assert "ZERO TOLERANCE" in prompt
     assert "NEVER use your training data" in prompt
-    assert "REFUSE" in prompt
+    assert "refuse" in prompt.lower()
 
 
 def test_build_prompt_includes_citation_rules():
