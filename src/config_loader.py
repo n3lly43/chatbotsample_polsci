@@ -1,0 +1,41 @@
+"""Loads config.yaml and .env, exposes settings as a dict."""
+
+import os
+from pathlib import Path
+
+import yaml
+from dotenv import load_dotenv
+
+_ENV_KEY_MAP = {
+    "openai": "OPENAI_API_KEY",
+    "anthropic": "ANTHROPIC_API_KEY",
+    "gemini": "GEMINI_API_KEY",
+}
+
+
+def load_config(config_path: str = None) -> dict:
+    if config_path is None:
+        config_path = Path(__file__).resolve().parent.parent / "config.yaml"
+
+    env_path = Path(config_path).resolve().parent / ".env"
+    if env_path.exists():
+        load_dotenv(str(env_path))
+
+    with open(config_path, "r") as f:
+        cfg = yaml.safe_load(f)
+
+    for provider, env_var in _ENV_KEY_MAP.items():
+        env_val = os.environ.get(env_var)
+        if env_val:
+            cfg.setdefault("api_keys", {})[provider] = env_val
+
+    return cfg
+
+
+def get_api_key(cfg: dict, provider: str) -> str:
+    env_var = _ENV_KEY_MAP.get(provider)
+    if env_var:
+        env_val = os.environ.get(env_var)
+        if env_val:
+            return env_val
+    return cfg.get("api_keys", {}).get(provider, "")

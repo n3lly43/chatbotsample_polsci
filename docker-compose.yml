@@ -1,0 +1,15 @@
+version: "3.8"
+services:
+  chatbot:
+    build: .
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./knowledge_base:/app/knowledge_base
+      - ./chroma_db:/app/chroma_db
+      - ./config.yaml:/app/config.yaml
+      - ./.env:/app/.env
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}

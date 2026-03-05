@@ -1,0 +1,24 @@
+# Core
+chromadb>=0.4.0
+PyPDF2>=3.0.0
+python-docx>=1.0.0
+openpyxl>=3.0.0
+xlrd>=2.0.0
+pyreadstat>=1.2.0
+pyreadr>=0.5.0
+requests>=2.28.0
+rich>=13.0.0
+pyyaml>=6.0
+python-dotenv>=1.0.0
+numpy>=1.24.0
+
+# LLM providers
+openai>=1.0.0
+anthropic>=0.20.0
+google-generativeai>=0.5.0
+
+# Web UI
+streamlit>=1.30.0
+
+# Testing
+pytest>=7.0.0
