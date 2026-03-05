@@ -112,6 +112,15 @@ def generate_kb_overview(
             lines.append(f"    {row_count} rows | Columns: {col_list}")
         lines.append("")
 
+    # ── Connection note ──────────────────────────────────────────────
+    if len(datasets) > 1:
+        ds_names = ", ".join(sorted(datasets))
+        lines.append(
+            f"All {len(datasets)} datasets ({ds_names}) are part of the same "
+            "knowledge base and may share related topics, countries, or time periods."
+        )
+        lines.append("")
+
     lines.append("=== END OVERVIEW ===")
     return "\n".join(lines)
 

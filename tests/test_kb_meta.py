@@ -56,6 +56,8 @@ def test_generate_kb_overview_multi_dataset_connections():
     assert "[a]" in overview
     assert "[b]" in overview
     assert "2 dataset" in overview
+    # Connection note present for multi-dataset
+    assert "same knowledge base" in overview
 
 
 # ── File record collection ───────────────────────────────────────────────────

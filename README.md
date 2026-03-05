@@ -17,6 +17,7 @@ A **citation-verified research assistant chatbot** that answers questions using 
   - [Web Interface](#web-interface)
 - [How It Works](#how-it-works)
 - [SQL Layer: Structured Data Queries](#sql-layer-structured-data-queries)
+- [KB Self-Awareness: The Meta Overview](#kb-self-awareness-the-meta-overview)
 - [Anti-Hallucination: How the Chatbot Stays Honest](#anti-hallucination-how-the-chatbot-stays-honest)
 - [Configuration Reference](#configuration-reference)
 - [Docker (Optional)](#docker-optional)
@@ -30,12 +31,13 @@ A **citation-verified research assistant chatbot** that answers questions using 
 
 You give the chatbot a collection of research documents (journal articles, datasets, reports, codebooks). When you ask a question, it:
 
-1. **Searches your documents** for relevant passages using vector similarity
-2. **Queries your datasets** directly using SQL for filtering, aggregation, and lookups
-3. **Optionally searches the web** for supplementary academic papers (via Semantic Scholar)
-4. **Generates an answer** grounded only in the retrieved sources
-5. **Cites every claim** with numbered endnote references (e.g., `[1]`, `[2]`)
-6. **Verifies the answer** against the sources before showing it to you
+1. **Knows what it knows** -- during ingestion, the chatbot builds a meta-overview of its entire knowledge base so it can answer questions like "What data do you have?" and contextualize every answer within the bigger picture
+2. **Searches your documents** for relevant passages using vector similarity
+3. **Queries your datasets** directly using SQL for filtering, aggregation, and lookups
+4. **Optionally searches the web** for supplementary academic papers (via Semantic Scholar)
+5. **Generates an answer** grounded only in the retrieved sources
+6. **Cites every claim** with numbered endnote references (e.g., `[1]`, `[2]`)
+7. **Verifies the answer** against the sources before showing it to you
 
 If the chatbot cannot find relevant information in your documents, it **refuses to answer** rather than guessing. This is by design -- an incomplete answer is always better than a fabricated one.
 
@@ -186,6 +188,9 @@ Ingesting 2 tabular file(s) into SQLite...
   SQL: survey_data__responses_xlsx (500 rows, 8 columns)
 SQL ingestion complete: 2 table(s).
 
+Generating knowledge base overview...
+KB overview generated and indexed.
+
 Ingestion complete: 89 chunks from 5 files.
 ```
 
@@ -284,6 +289,7 @@ You ask a question
         |
         v
  1. UNDERSTAND -- The AI reformulates your question for better search
+                -- Has full awareness of the KB contents (via meta overview)
                 -- Expands abbreviations, resolves follow-up references
                 -- May ask a clarification question if genuinely ambiguous
                 -- Routes to vector search, SQL, or both
@@ -297,6 +303,7 @@ You ask a question
         |
         v
  3. GENERATE -- Send the question + retrieved passages to the AI model
+              -- System prompt includes KB overview for broader context
               -- System prompt enforces strict citation rules
         |
         v
@@ -316,6 +323,7 @@ You ask a question
 - **No sources = no answer.** If the chatbot cannot find relevant passages in your documents or the web, it will say so rather than make something up.
 - **Smart query routing.** The chatbot automatically decides how to search: conceptual questions go to vector search, data lookups go to SQL, and mixed questions use both. If one path returns nothing, it falls back to the other.
 - **Smart query understanding.** Before searching, the chatbot reformulates your question to improve retrieval accuracy -- expanding abbreviations, resolving references from prior conversation, and adding relevant keywords. It shows you what it searched for, so you can see how your question was interpreted.
+- **Self-aware.** The chatbot knows what's in its knowledge base. Ask "What data do you have?" and it will tell you, instead of refusing because it can't find a matching chunk.
 - **Every claim gets a citation.** The answer format uses numbered endnotes (`[1]`, `[2]`, etc.) with a full reference list at the bottom.
 - **Direct quotes are marked.** When the chatbot uses three or more consecutive words from a source, they appear in quotation marks.
 
@@ -343,6 +351,22 @@ When you ingest tabular files (CSV, Excel, Stata, SPSS, R data), they are loaded
 **Safety:** SQL injection is prevented by two layers: (1) queries must be a single SELECT statement with no semicolons, and (2) the SQLite connection is opened in read-only mode.
 
 **Graceful degradation:** If no tabular files are ingested, the SQL layer is silently skipped and the chatbot works identically to a vector-only system. If a SQL query fails or returns no results, the chatbot falls back to vector search.
+
+---
+
+## KB Self-Awareness: The Meta Overview
+
+A common problem with RAG chatbots is that they don't know what they know. If you ask "What data do you have?" or "What datasets are available?", a typical vector-search chatbot returns nothing -- because abstract meta-questions don't match any specific document chunk.
+
+This chatbot solves that problem with a **KB meta overview** -- an LLM-generated high-level summary of the entire knowledge base that is produced automatically during ingestion. The overview describes what documents and tables exist, what topics they cover, and how they connect.
+
+**How the meta overview is used:**
+
+1. **Answering meta-questions.** The overview is stored as a special chunk in the vector database, so questions like "What is in the knowledge base?" find it through normal vector search and get a real answer instead of a refusal.
+2. **Smarter query routing.** The query understanding layer sees the full overview, so it knows what's available when deciding how to reformulate and route your question (vector, SQL, or both).
+3. **Better-contextualized answers.** When generating any response, the AI has the "big picture" of the knowledge base alongside the specific retrieved passages. This helps it say things like "the PTS dataset, one of three datasets in the knowledge base, shows..." instead of answering in isolation.
+
+**Graceful degradation:** If the LLM is unavailable during ingestion, the overview falls back to a structured file listing (deterministic, no LLM needed). If the overview file is missing entirely (e.g., first run before ingestion), the chatbot works identically to a system without the feature -- no errors, no impact. The overview regenerates automatically every time you run `python ingest.py`.
 
 ---
 
@@ -462,6 +486,7 @@ The container mounts your `knowledge_base/`, `chroma_db/`, `sql_db/`, `config.ya
 - **No hallucination by design.** The 6-layer verification stack catches unsupported claims before they reach you. If the chatbot can't verify an answer, it refuses rather than guessing. This is critical for research where accuracy matters.
 - **Full citation trail.** Every factual claim is tied to a specific source with page numbers or URLs. You can trace any claim back to the original document and verify it yourself.
 - **Works with your own documents.** Unlike general-purpose chatbots, this one answers from *your* knowledge base. Your PDFs, datasets, and codebooks are the primary authority.
+- **Knows what it knows.** The chatbot builds a meta-overview of its entire knowledge base during ingestion. It can answer meta-questions like "What datasets do you have?" and contextualizes every answer within the broader picture. This is unlike typical RAG systems that are blind to their own contents.
 - **Structured data queries.** Ask questions like "PTS scores for China along the years" or "how many countries are in the dataset?" and the chatbot queries your datasets directly using SQL -- no more imprecise vector search over tabular data.
 - **Reads 15 file formats.** Handles the formats social scientists actually use: Stata `.dta`, SPSS `.sav`, R `.rds`/`.rda`, Excel, CSV, PDF, Word, and plain text. No file conversion needed.
 - **No data leaves your computer (except to the AI provider).** Your documents are stored locally in a vector database and SQLite database on your own machine. They are not uploaded to any cloud storage. Only the relevant text chunks or query results are sent to the AI provider as part of each query.
