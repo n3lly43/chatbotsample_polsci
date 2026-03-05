@@ -49,7 +49,9 @@ to achieve full or partial success."
 Campaigns that achieved large-scale, diverse participation were
 significantly more likely to succeed. [1][2] The NAVCO 2.0 codebook
 classifies primary resistance methods including protests, strikes,
-boycotts, and other forms of noncooperation. [2]
+boycotts, and other forms of noncooperation. [2] Security force
+defections were also identified as a key mechanism linking mass
+participation to campaign success. [3]
 
 **References**
 
@@ -60,8 +62,9 @@ boycotts, and other forms of noncooperation. [2]
     -- knowledge_base/NAVCO 2.0/NAVCO2JPRcodebook2013.pdf
 
 **Web Sources (Supplementary):**
-[3] Chenoweth, E. & Stephan, M. (2011). "Why Civil Resistance Works."
-    DOI: https://doi.org/10.7312/chen15682
+[3] Nepstad, S.E. (2011). "Nonviolent Revolutions: Civil Resistance
+    in the Late 20th Century."
+    DOI: https://doi.org/10.1093/acprof:oso/9780199778201.001.0001
 ```
 
 ---
