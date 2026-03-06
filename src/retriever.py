@@ -202,6 +202,78 @@ def _build_fallback_sql_query(query: str, cfg: dict) -> str | None:
     return None
 
 
+def _try_alternate_columns(sql_query: str, cfg: dict) -> tuple[list[dict], str] | None:
+    """Try phrase-level LIKE on other TEXT columns of the same table.
+
+    When ``WHERE "Country" LIKE '%South Korea%'`` fails because the value
+    is stored in a different column (e.g. ``Country_OLD``), this function
+    tries each TEXT column in the table until one matches.
+
+    Returns (rows, effective_query) or None if nothing found.
+    """
+    import json as _json
+    import os
+
+    # Extract table name and search value from the query
+    table_name = _extract_table_from_query(sql_query)
+    if not table_name:
+        return None
+
+    # Extract the LIKE value or = value from the WHERE clause
+    value_match = re.search(
+        r"LIKE\s+'%([^%]+)%'|=\s*'([^']+)'",
+        sql_query, re.IGNORECASE,
+    )
+    if not value_match:
+        return None
+    search_value = value_match.group(1) or value_match.group(2)
+    if not search_value:
+        return None
+
+    # Extract the column currently being searched
+    col_match = re.search(
+        r'["`]?(\w+)["`]?\s*(?:LIKE|=)\s*',
+        sql_query, re.IGNORECASE,
+    )
+    current_col = col_match.group(1) if col_match else ""
+
+    # Load schema to find other TEXT columns
+    sql_db_dir = cfg.get("paths", {}).get("sql_db", "sql_db")
+    if not os.path.isabs(sql_db_dir):
+        from pathlib import Path
+        project_root = Path(__file__).resolve().parent.parent
+        sql_db_dir = os.path.join(str(project_root), sql_db_dir)
+    schema_path = os.path.join(sql_db_dir, "sql_schemas.json")
+    try:
+        with open(schema_path) as f:
+            schema = _json.load(f)
+    except Exception:
+        return None
+
+    table_info = schema.get(table_name)
+    if not table_info:
+        return None
+
+    text_cols = [
+        c.get("name") for c in table_info.get("columns", [])
+        if c.get("type", "").upper() == "TEXT"
+        and c.get("name")
+        and c.get("name") != current_col
+    ]
+
+    from src.sql_retriever import execute_sql_query
+
+    max_rows = cfg.get("sql", {}).get("max_rows", 200)
+    safe_value = search_value.replace("'", "''")
+    for col in text_cols:
+        alt_query = f'SELECT * FROM "{table_name}" WHERE "{col}" LIKE \'%{safe_value}%\' LIMIT {max_rows}'
+        rows = execute_sql_query(alt_query, cfg)
+        if rows:
+            return rows, alt_query
+
+    return None
+
+
 def _run_sql_retrieval(sql_query: str, cfg: dict) -> tuple[list[dict], str, str]:
     """Execute SQL query and format results as context.
 
@@ -233,6 +305,13 @@ def _run_sql_retrieval(sql_query: str, cfg: dict) -> tuple[list[dict], str, str]
             if sql_rows:
                 effective_query = fuzzy
                 match_type = "fuzzy (phrase)"
+
+    # Step 2.5: if phrase fuzzy failed on original column, try other TEXT columns
+    if not sql_rows:
+        alt = _try_alternate_columns(fuzzy or sql_query, cfg)
+        if alt:
+            sql_rows, effective_query = alt
+            match_type = "fuzzy (alt column)"
 
     # Step 3: if still no results, try word-level fuzzy (LIKE '%Korea%')
     if not sql_rows:
