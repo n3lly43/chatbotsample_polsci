@@ -4,7 +4,7 @@ import streamlit as st
 
 from src.config_loader import load_config, get_api_key
 from src.ingest import get_chroma_collection, ingest_documents
-from src.kb_meta import load_kb_meta
+from src.kb_meta import summarize_kb_for_welcome
 from src.query_engine import understand_query
 from src.retriever import retrieve
 from src.verifier import verify_and_respond
@@ -289,16 +289,14 @@ def main():
 
     st.title(bot_name)
 
-    # Show KB overview on first visit (no messages yet)
+    # Show KB summary on first visit (LLM-generated welcome summary)
     if not st.session_state.messages:
-        kb_overview = load_kb_meta(cfg)
-        if kb_overview:
-            overview_body = kb_overview
-            for marker in ("=== KNOWLEDGE BASE OVERVIEW ===", "=== END OVERVIEW ==="):
-                overview_body = overview_body.replace(marker, "")
-            overview_body = overview_body.strip()
+        if "kb_welcome_summary" not in st.session_state:
+            st.session_state.kb_welcome_summary = summarize_kb_for_welcome(cfg)
+        kb_summary = st.session_state.kb_welcome_summary
+        if kb_summary:
             with st.expander("Knowledge Base Contents", expanded=True):
-                st.markdown(overview_body)
+                st.markdown(kb_summary)
 
     render_sidebar()
     render_chat()

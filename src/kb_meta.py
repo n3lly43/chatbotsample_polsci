@@ -401,3 +401,63 @@ def build_and_store_overview(collection, cfg: dict) -> str:
     save_kb_meta(overview, cfg)
     upsert_meta_chunk(collection, overview)
     return overview
+
+
+_WELCOME_SUMMARY_PROMPT = """\
+Given the following knowledge base overview, write a brief, friendly
+welcome summary (3-6 sentences) for the chatbot's landing page.
+
+Tell the user:
+- What topics and datasets are available to ask about
+- Roughly how much data there is (number of files, datasets, or data points)
+- 2-3 example questions they could ask based on the actual content
+
+Keep it conversational and concise. Do NOT use bullet points or headings.
+Do NOT include technical details like column names, file extensions, or chunk counts.
+
+--- KNOWLEDGE BASE OVERVIEW ---
+{kb_overview}
+--- END ---
+
+Write the welcome summary now:"""
+
+
+def summarize_kb_for_welcome(cfg: dict) -> str:
+    """Generate a short, friendly welcome summary from the KB meta overview.
+
+    Uses the LLM to produce a conversational summary suitable for the
+    welcome page. Falls back to the raw overview text (stripped of markers)
+    if the LLM call fails.
+
+    Returns empty string if no KB meta exists.
+    """
+    kb_overview = load_kb_meta(cfg)
+    if not kb_overview:
+        return ""
+
+    # Strip markers for clean input
+    clean = kb_overview
+    for marker in ("=== KNOWLEDGE BASE OVERVIEW ===", "=== END OVERVIEW ==="):
+        clean = clean.replace(marker, "")
+    clean = clean.strip()
+    if not clean:
+        return ""
+
+    try:
+        from src.llm import generate
+        prompt = _WELCOME_SUMMARY_PROMPT.format(kb_overview=clean)
+        summary = generate(
+            "You are a friendly research assistant. Be concise.",
+            prompt,
+            cfg,
+            max_tokens=512,
+        )
+        if summary and summary.strip():
+            return summary.strip()
+    except Exception:
+        pass
+
+    # Fallback: return truncated raw overview
+    if len(clean) > 600:
+        clean = clean[:600].rsplit("\n", 1)[0] + "\n..."
+    return clean
