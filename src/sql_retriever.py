@@ -93,7 +93,7 @@ def format_sql_results_as_context(
         if table_desc:
             parts.append(f"Dataset description: {table_desc}\n")
         col_descs = {
-            c["name"]: c.get("description", "")
+            c.get("name", "unknown"): c.get("description", "")
             for c in table_info.get("columns", [])
         }
         desc_lines = [f"  {name}: {desc}" for name, desc in col_descs.items() if desc]

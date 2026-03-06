@@ -499,15 +499,18 @@ def _ingest_tables(
 
             # Infer column types, collect samples and stats
             safe_headers = [_sanitize_column_name(h) for h in headers]
-            # Deduplicate: append _2, _3, etc. for collisions
-            seen: dict[str, int] = {}
+            # Deduplicate: ensure all column names are unique after sanitization.
+            # Checks every name against all previously assigned names,
+            # handling both same-name collisions and suffix collisions
+            # (e.g., 'Score_A', 'Score_A', 'Score_A_2' won't produce duplicates).
+            used: set[str] = set()
             for i, name in enumerate(safe_headers):
-                lower = name.lower()
-                if lower in seen:
-                    seen[lower] += 1
-                    safe_headers[i] = f"{name}_{seen[lower]}"
-                else:
-                    seen[lower] = 1
+                if name.lower() in used:
+                    suffix = 2
+                    while f"{name}_{suffix}".lower() in used:
+                        suffix += 1
+                    safe_headers[i] = f"{name}_{suffix}"
+                used.add(safe_headers[i].lower())
             col_types = []
             col_samples = []
             col_stats = []

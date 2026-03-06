@@ -162,6 +162,8 @@ def _parse_qu_result(raw: str, original_query: str) -> dict:
     search_query = parsed.get("search_query", original_query)
     display_query = parsed.get("display_query", original_query)
     route = parsed.get("route", "vector")
+    if isinstance(route, str):
+        route = route.strip().lower()
     if route not in ("sql", "vector", "both"):
         route = "vector"
     sql_query = parsed.get("sql_query") if route in ("sql", "both") else None
