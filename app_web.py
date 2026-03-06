@@ -22,6 +22,8 @@ def init_session():
         st.session_state.last_retrieval = None
     if "pending_clarification" not in st.session_state:
         st.session_state.pending_clarification = None
+    if "clarification_rounds" not in st.session_state:
+        st.session_state.clarification_rounds = 0
 
 
 # ── Sidebar ──────────────────────────────────────────────────────────────────
@@ -152,6 +154,7 @@ def render_chat():
         else:
             combined = prompt
             original_query = prompt
+            st.session_state.clarification_rounds = 0
 
         # ── Query understanding ─────────────────────────────────────────
         qu_cfg = cfg.get("query_understanding", {})
@@ -177,10 +180,11 @@ def render_chat():
             except Exception:
                 qu_result = {"action": "search", "search_query": combined, "display_query": combined, "original_query": original_query}
 
-            if qu_result.get("action") == "clarify" and pending is None and max_clarifications > 0:
+            if qu_result.get("action") == "clarify" and st.session_state.clarification_rounds < max_clarifications:
                 # Ask clarification — store original query and question for context
                 st.session_state.pending_clarification = original_query
                 st.session_state.pending_clarification_question = qu_result.get('clarification_question', 'Could you be more specific?')
+                st.session_state.clarification_rounds += 1
                 clarification_msg = f"**Before I search, could you clarify?** {qu_result.get('clarification_question', 'Could you be more specific?')}"
                 st.session_state.messages.append(
                     {"role": "assistant", "content": clarification_msg}
@@ -188,6 +192,10 @@ def render_chat():
                 with st.chat_message("assistant"):
                     st.markdown(clarification_msg)
                 return
+
+            # After max clarification rounds, force search (matches CLI behavior)
+            if qu_result.get("action") == "clarify":
+                qu_result["action"] = "search"
 
             search_query = qu_result.get("search_query", combined)
             display_query = qu_result.get("display_query", original_query)
