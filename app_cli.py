@@ -9,6 +9,7 @@ from rich.text import Text
 
 from src.config_loader import load_config, get_api_key
 from src.ingest import ingest_documents
+from src.kb_meta import load_kb_meta
 from src.query_engine import understand_query
 from src.retriever import retrieve
 from src.verifier import verify_and_respond
@@ -212,6 +213,20 @@ def main() -> None:
         welcome.append("Web search: ", style="bold")
         welcome.append("OFF", style="bold red")
         welcome.append(". Use /websearch on to enable.\n\n")
+
+    # KB overview summary
+    kb_overview = load_kb_meta(cfg)
+    if kb_overview:
+        welcome.append("Knowledge Base Contents:\n", style="bold")
+        # Strip the === markers and show the body
+        overview_body = kb_overview
+        for marker in ("=== KNOWLEDGE BASE OVERVIEW ===", "=== END OVERVIEW ==="):
+            overview_body = overview_body.replace(marker, "")
+        overview_body = overview_body.strip()
+        # Truncate for the welcome panel (keep first ~600 chars)
+        if len(overview_body) > 600:
+            overview_body = overview_body[:600].rsplit("\n", 1)[0] + "\n..."
+        welcome.append(overview_body + "\n\n", style="dim")
 
     welcome.append("Type your question, or /help for commands.\n", style="italic")
     welcome.append("Type /quit to exit.", style="italic dim")

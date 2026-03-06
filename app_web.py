@@ -4,6 +4,7 @@ import streamlit as st
 
 from src.config_loader import load_config, get_api_key
 from src.ingest import get_chroma_collection, ingest_documents
+from src.kb_meta import load_kb_meta
 from src.query_engine import understand_query
 from src.retriever import retrieve
 from src.verifier import verify_and_respond
@@ -287,6 +288,17 @@ def main():
     bot_name = cfg.get("chatbot", {}).get("name", "ResearchBot")
 
     st.title(bot_name)
+
+    # Show KB overview on first visit (no messages yet)
+    if not st.session_state.messages:
+        kb_overview = load_kb_meta(cfg)
+        if kb_overview:
+            overview_body = kb_overview
+            for marker in ("=== KNOWLEDGE BASE OVERVIEW ===", "=== END OVERVIEW ==="):
+                overview_body = overview_body.replace(marker, "")
+            overview_body = overview_body.strip()
+            with st.expander("Knowledge Base Contents", expanded=True):
+                st.markdown(overview_body)
 
     render_sidebar()
     render_chat()
