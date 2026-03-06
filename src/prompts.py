@@ -245,7 +245,7 @@ def build_query_understanding_prompt(
         kb_overview_block = ""
 
     return QUERY_UNDERSTANDING_PROMPT_TEMPLATE.format(
-        domain=domain,
+        domain=_escape_braces(domain),
         history=_escape_braces(history_str),
         query=_escape_braces(query),
         sql_routing_block=sql_routing_block,
@@ -284,8 +284,8 @@ def build_prompt(
         overview_section = ""
 
     return SYSTEM_PROMPT_TEMPLATE.format(
-        bot_name=bot_name,
-        domain=domain,
+        bot_name=_escape_braces(bot_name),
+        domain=_escape_braces(domain),
         context=_escape_braces(context),
         kb_overview_section=overview_section,
     )

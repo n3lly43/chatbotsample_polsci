@@ -199,6 +199,25 @@ def ingest_to_sql(files: list[tuple], documents_dir: str, cfg: dict) -> dict:
     conn = sqlite3.connect(db_path)
     schema_registry = {}
 
+    try:
+        schema_registry = _ingest_tables(conn, tabular_files, documents_dir)
+    finally:
+        conn.close()
+
+    with open(schema_path, "w", encoding="utf-8") as f:
+        json.dump(schema_registry, f, indent=2, default=str)
+
+    return schema_registry
+
+
+def _ingest_tables(
+    conn: sqlite3.Connection,
+    tabular_files: list[tuple],
+    documents_dir: str,
+) -> dict:
+    """Load tabular files into SQLite tables. Returns the schema registry."""
+    schema_registry = {}
+
     for file_path, dataset_name in tabular_files:
         ext = file_path.suffix.lower()
         rel_path = file_path.relative_to(documents_dir)
@@ -269,10 +288,5 @@ def ingest_to_sql(files: list[tuple], documents_dir: str, cfg: dict) -> dict:
                 "row_count": row_count,
             }
             print(f"  SQL: {table_name} ({row_count} rows, {len(headers)} columns)")
-
-    conn.close()
-
-    with open(schema_path, "w", encoding="utf-8") as f:
-        json.dump(schema_registry, f, indent=2, default=str)
 
     return schema_registry
