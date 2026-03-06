@@ -106,7 +106,7 @@ def discover_files(documents_dir: str) -> list[tuple[Path, str]]:
             continue
         if file_path.suffix.lower() not in supported:
             continue
-        if file_path.name.startswith("."):
+        if file_path.name.startswith(".") or file_path.name.startswith("~$"):
             continue
 
         rel = file_path.relative_to(root)

@@ -1,5 +1,5 @@
 """Anthropic LLM provider."""
-FALLBACK_MODELS = ["claude-sonnet-4-6", "claude-opus-4-6", "claude-haiku-4-5"]
+SUPPORTED_MODELS = ["claude-sonnet-4-6", "claude-opus-4-6", "claude-haiku-4-5"]
 
 def generate(system_prompt: str, user_message: str, api_key: str,
              model: str = None, temperature: float = 0.0,
@@ -21,10 +21,4 @@ def generate(system_prompt: str, user_message: str, api_key: str,
         raise RuntimeError(f"Anthropic API error ({error_type}). Check your API key and network connection.") from e
 
 def list_models(api_key: str) -> list[str]:
-    try:
-        from anthropic import Anthropic
-        client = Anthropic(api_key=api_key)
-        models = client.models.list()
-        return sorted([m.id for m in models.data])
-    except Exception:
-        return FALLBACK_MODELS
+    return list(SUPPORTED_MODELS)

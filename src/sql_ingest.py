@@ -263,7 +263,8 @@ def _describe_columns_with_llm(
         if start >= 0 and end > start:
             return json.loads(text[start:end])
         return {}
-    except Exception:
+    except Exception as e:
+        print(f"    LLM description error: {e}")
         return {}
 
 
