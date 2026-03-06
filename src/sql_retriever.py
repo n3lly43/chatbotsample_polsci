@@ -132,10 +132,10 @@ def build_schema_summary(schema: dict) -> str:
         source = info.get("source_file", "")
         table_desc = info.get("table_description", "")
 
-        header = f"\n- {table_name} ({row_count} rows, from {source})"
+        header = f"\n- {table_name} ({row_count} rows, from {source}):"
         if table_desc:
             header += f"\n  Description: {table_desc}"
-        lines.append(header + ":")
+        lines.append(header)
 
         for c in info.get("columns", []):
             col_type = c.get("type", "TEXT")

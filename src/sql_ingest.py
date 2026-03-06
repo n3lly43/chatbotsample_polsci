@@ -77,7 +77,11 @@ def _get_sample_values(values: list, n: int = 5) -> list:
                 unique.append(v_str)
     if not unique:
         return []
-    sorted_vals = sorted(unique)
+    # Sort numerically if all values are numeric, otherwise alphabetically
+    try:
+        sorted_vals = sorted(unique, key=float)
+    except (ValueError, TypeError):
+        sorted_vals = sorted(unique)
     if len(sorted_vals) <= n:
         return sorted_vals
     # Pick evenly spaced indices including first and last
@@ -305,7 +309,7 @@ def _enrich_schema_with_descriptions(
 def _load_rows_from_csv(file_path: str, ext: str) -> list[tuple]:
     """Load CSV/TSV/TAB into (sheet_or_name, headers, rows) tuples."""
     delimiter = "\t" if ext in (".tab", ".tsv") else ","
-    with open(file_path, "r", encoding="utf-8", errors="replace") as f:
+    with open(file_path, "r", encoding="utf-8-sig", errors="replace") as f:
         reader = csv.reader(f, delimiter=delimiter)
         all_rows = list(reader)
     if len(all_rows) < 2:
@@ -465,7 +469,11 @@ def _ingest_tables(
 
     for file_path, dataset_name in tabular_files:
         ext = file_path.suffix.lower()
-        rel_path = file_path.relative_to(documents_dir)
+        try:
+            rel_path = file_path.relative_to(documents_dir)
+        except ValueError:
+            print(f"  SQL ingest: {file_path.name} not under {documents_dir}, skipping")
+            continue
         source_file = str(rel_path)
 
         try:
