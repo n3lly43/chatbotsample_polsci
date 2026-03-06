@@ -225,14 +225,23 @@ def _run_sql_retrieval(sql_query: str, cfg: dict) -> tuple[list[dict], str, str]
     effective_query = sql_query
     match_type = "exact"
 
-    # Step 2: if no results, try fuzzy fallback
+    # Step 2: if no results, try phrase-level fuzzy (LIKE '%South Korea%')
     if not sql_rows:
         fuzzy = make_fuzzy_query(sql_query)
         if fuzzy:
             sql_rows = execute_sql_query(fuzzy, cfg)
             if sql_rows:
                 effective_query = fuzzy
-                match_type = "fuzzy"
+                match_type = "fuzzy (phrase)"
+
+    # Step 3: if still no results, try word-level fuzzy (LIKE '%Korea%')
+    if not sql_rows:
+        word_fuzzy = make_fuzzy_query(sql_query, word_level=True)
+        if word_fuzzy and word_fuzzy != (make_fuzzy_query(sql_query) or ""):
+            sql_rows = execute_sql_query(word_fuzzy, cfg)
+            if sql_rows:
+                effective_query = word_fuzzy
+                match_type = "fuzzy (word)"
 
     if not sql_rows:
         return [], "", ""

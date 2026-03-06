@@ -154,20 +154,61 @@ def format_sql_results_as_context(
     return "\n".join(parts)
 
 
-def make_fuzzy_query(sql: str) -> str | None:
+_FUZZY_STOPWORDS = frozenset({
+    "the", "and", "for", "are", "but", "not", "you", "all",
+    "can", "had", "her", "was", "one", "our", "out", "has",
+    "what", "how", "who", "which", "when", "where", "with",
+    "from", "that", "this", "than", "then", "they", "been",
+    "south", "north", "east", "west", "new", "old", "united",
+    "democratic", "republic", "people", "state", "states",
+    "islamic", "federal", "kingdom",
+})
+
+
+def make_fuzzy_query(sql: str, word_level: bool = False) -> str | None:
     """Convert exact equality on text values to LIKE fuzzy matching.
 
-    Transforms ``column = 'value'`` into ``column LIKE '%value%'``
-    so that partial country names (e.g. "South Korea" matching
-    "South Korea (Republic of Korea)") can be found.
+    When ``word_level`` is False (default), transforms
+    ``column = 'value'`` into ``column LIKE '%value%'``
+    (phrase-level matching).
+
+    When ``word_level`` is True, transforms
+    ``column = 'South Korea'`` into
+    ``(column LIKE '%Korea%')``
+    by extracting significant content words (dropping stopwords and
+    directional/geopolitical qualifiers). This handles cases where
+    "South Korea" is stored as "Korea, Republic of".
 
     Returns the modified query, or None if no substitutions were made.
     """
-    # Match patterns like: column = 'value' or column='value'
     pattern = re.compile(
         r"""(["']?\w+["']?\s*)=\s*'([^']+)'""",
     )
-    new_sql, count = pattern.subn(r"\1LIKE '%\2%'", sql)
+
+    if not word_level:
+        new_sql, count = pattern.subn(r"\1LIKE '%\2%'", sql)
+        if count == 0:
+            return None
+        return new_sql
+
+    # Word-level: extract significant words from each value
+    def _word_replace(m):
+        col_part = m.group(1)
+        value = m.group(2)
+        words = [
+            w for w in re.split(r'\W+', value)
+            if len(w) >= 3 and w.lower() not in _FUZZY_STOPWORDS
+        ]
+        if not words:
+            # Fallback: use the original value as phrase LIKE
+            return f"{col_part}LIKE '%{value}%'"
+        if len(words) == 1:
+            return f"{col_part}LIKE '%{words[0]}%'"
+        # Multiple words: join with AND on the same column
+        conditions = [f"{col_part}LIKE '%{w}%'" for w in words]
+        return "(" + " AND ".join(conditions) + ")"
+
+    new_sql, count = pattern.subn(_word_replace, sql)
     if count == 0:
         return None
     return new_sql
