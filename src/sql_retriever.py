@@ -7,17 +7,29 @@ from pathlib import Path
 
 
 _DANGEROUS_KEYWORDS = re.compile(
-    r"\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|ATTACH|DETACH|PRAGMA|LOAD_EXTENSION)\b",
+    r"\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|ATTACH|DETACH|PRAGMA|"
+    r"LOAD_EXTENSION|UNION|REPLACE|VACUUM|REINDEX|SAVEPOINT|RELEASE|"
+    r"ROLLBACK|BEGIN|COMMIT|GRANT|REVOKE|EXPLAIN|WITH)\b",
     re.IGNORECASE,
 )
+
+
+def _strip_sql_comments(sql: str) -> str:
+    """Remove SQL comments (single-line -- and multi-line /* */) from a query."""
+    prev = None
+    while prev != sql:
+        prev = sql
+        sql = re.sub(r'/\*.*?\*/', '', sql, flags=re.DOTALL)
+        sql = re.sub(r'--[^\n]*', '', sql)
+    return sql
 
 
 def _validate_sql(sql: str) -> bool:
     """Validate that a SQL string is a safe SELECT query.
 
     Layer 1 of SQL injection protection (Layer 2 is the read-only connection).
-    Rejects non-SELECT statements, semicolons, and dangerous keywords
-    that could appear inside subqueries or UNION clauses.
+    Rejects non-SELECT statements, semicolons, dangerous keywords,
+    and subqueries (multiple SELECT keywords).
     """
     stripped = sql.strip()
     if not stripped:
@@ -27,6 +39,9 @@ def _validate_sql(sql: str) -> bool:
     if not stripped.upper().startswith("SELECT"):
         return False
     if _DANGEROUS_KEYWORDS.search(stripped):
+        return False
+    # Block subqueries: reject if more than one SELECT keyword
+    if len(re.findall(r'\bSELECT\b', stripped, re.IGNORECASE)) > 1:
         return False
     return True
 
@@ -54,6 +69,9 @@ def execute_sql_query(sql_query: str, cfg: dict) -> list[dict]:
     sql_query = sql_query.strip()
     if sql_query.startswith("```"):
         sql_query = sql_query.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
+
+    # Strip comments before validation AND execution
+    sql_query = _strip_sql_comments(sql_query).strip()
 
     if not _validate_sql(sql_query):
         return []

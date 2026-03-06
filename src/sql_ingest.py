@@ -10,6 +10,9 @@ from pathlib import Path
 # Extensions that trigger SQL ingestion (tabular formats)
 SQL_EXTENSIONS = {".csv", ".tab", ".tsv", ".xlsx", ".xls", ".dta", ".sav", ".rds", ".rda"}
 
+# String representations of missing values (compared lowercase after strip)
+_NULL_STRINGS = {"", "nan", "na", "<na>", "nat", "none", "null", "n/a", "."}
+
 # Extensions that might contain codebook/documentation
 _CODEBOOK_EXTENSIONS = {".pdf", ".docx", ".txt", ".md"}
 
@@ -40,7 +43,7 @@ def _sanitize_table_name(dataset: str, stem: str, ext: str, sheet: str = None) -
 
 def _infer_column_type(values: list) -> str:
     """Infer SQLite column type from a list of raw string values."""
-    non_empty = [v for v in values if v is not None and str(v).strip() and str(v).lower() != "nan"]
+    non_empty = [v for v in values if not _is_null(v)]
     if not non_empty:
         return "TEXT"
     # Try INTEGER
@@ -83,7 +86,7 @@ def _get_sample_values(values: list, n: int = 5) -> list:
     unique = []
     seen = set()
     for v in values:
-        if v is not None and str(v).strip() and str(v).lower() != "nan":
+        if not _is_null(v):
             v_str = str(v).strip()
             if v_str not in seen:
                 seen.add(v_str)
@@ -109,10 +112,7 @@ def _get_column_stats(values: list, col_type: str) -> dict:
 
     Returns dict with 'unique_count' and optionally 'min'/'max' for numerics.
     """
-    non_empty = [
-        str(v).strip() for v in values
-        if v is not None and str(v).strip() and str(v).lower() != "nan"
-    ]
+    non_empty = [str(v).strip() for v in values if not _is_null(v)]
     unique_count = len(set(non_empty))
     stats = {"unique_count": unique_count}
     if col_type == "INTEGER" and non_empty:
@@ -338,17 +338,19 @@ def _load_rows_from_excel(file_path: str, ext: str) -> list[tuple]:
     if ext == ".xlsx":
         import openpyxl
         wb = openpyxl.load_workbook(file_path, read_only=True, data_only=True)
-        results = []
-        for sheet_name in wb.sheetnames:
-            ws = wb[sheet_name]
-            all_rows = list(ws.iter_rows(values_only=True))
-            if len(all_rows) < 2:
-                continue
-            headers = [str(h) if h is not None else "" for h in all_rows[0]]
-            rows = [[str(c) if c is not None else "" for c in row] for row in all_rows[1:]]
-            results.append((sheet_name, headers, rows))
-        wb.close()
-        return results
+        try:
+            results = []
+            for sheet_name in wb.sheetnames:
+                ws = wb[sheet_name]
+                all_rows = list(ws.iter_rows(values_only=True))
+                if len(all_rows) < 2:
+                    continue
+                headers = [str(h) if h is not None else "" for h in all_rows[0]]
+                rows = [[str(c) if c is not None else "" for c in row] for row in all_rows[1:]]
+                results.append((sheet_name, headers, rows))
+            return results
+        finally:
+            wb.close()
     else:  # .xls
         import xlrd
         wb = xlrd.open_workbook(file_path)
@@ -363,11 +365,22 @@ def _load_rows_from_excel(file_path: str, ext: str) -> list[tuple]:
         return results
 
 
+def _is_null(v) -> bool:
+    """Return True if *v* represents a missing value."""
+    if v is None:
+        return True
+    s = str(v).strip().lower()
+    return s in _NULL_STRINGS
+
+
 def _safe_str(v):
     """Convert a value to string, preserving None for missing data."""
     if v is None:
         return None
-    return str(v)
+    s = str(v)
+    if s.strip().lower() in _NULL_STRINGS:
+        return None
+    return s
 
 
 def _load_rows_from_stata(file_path: str) -> list[tuple]:
@@ -555,7 +568,7 @@ def _ingest_tables(
                 values = []
                 for col_idx, col_type in enumerate(col_types):
                     raw = row[col_idx] if col_idx < len(row) else None
-                    if raw is None or str(raw).strip() == "" or str(raw).lower() == "nan":
+                    if _is_null(raw):
                         values.append(None)
                     elif col_type == "INTEGER":
                         try:

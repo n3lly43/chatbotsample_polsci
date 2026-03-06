@@ -163,10 +163,22 @@ def parse_verification_result(raw: str) -> dict:
     Returns:
         A dict with at least ``errors``, ``error_count``, and ``pass``.
     """
+    if not raw:
+        return {
+            "errors": [{"description": "Verification LLM returned no output."}],
+            "error_count": 1,
+            "pass": False,
+        }
+
     # Try direct parse
     try:
         result = json.loads(raw)
         if isinstance(result, dict) and "pass" in result:
+            if not isinstance(result.get("errors"), list):
+                result["errors"] = []
+            if not isinstance(result.get("error_count"), int):
+                result["error_count"] = len(result["errors"])
+            result["pass"] = result.get("pass") is True
             return result
     except (json.JSONDecodeError, TypeError):
         pass
@@ -178,6 +190,11 @@ def parse_verification_result(raw: str) -> dict:
             try:
                 result, _ = decoder.raw_decode(raw, i)
                 if isinstance(result, dict) and "pass" in result:
+                    if not isinstance(result.get("errors"), list):
+                        result["errors"] = []
+                    if not isinstance(result.get("error_count"), int):
+                        result["error_count"] = len(result["errors"])
+                    result["pass"] = result.get("pass") is True
                     return result
             except json.JSONDecodeError:
                 continue
@@ -238,8 +255,21 @@ def verify_and_respond(
     # ── Generate initial response ─────────────────────────────────────────
     response = generate(system_prompt, query, cfg, max_tokens=soft_max)
 
+    # ── Guard: empty response from LLM ────────────────────────────────────
+    if not response or not response.strip():
+        return {
+            "response": (
+                "The AI model was unable to generate a response. "
+                "Please try rephrasing your question."
+            ),
+            "refused": True,
+            "verification_passed": False,
+            "iterations": 0,
+        }
+
     # ── Guard: detect provider-level content blocks ────────────────────────
-    if response.startswith("[") and "blocked" in response.lower():
+    lower_resp = response.lower()
+    if lower_resp.startswith("[gemini blocked") or lower_resp.startswith("[blocked"):
         return {
             "response": (
                 "The LLM provider blocked this request due to content "
@@ -273,6 +303,7 @@ def verify_and_respond(
         }
 
     # ── Verification loop ─────────────────────────────────────────────────
+    initial_response = response
     for iteration in range(1, max_iterations + 1):
         # Layer 5: Warning-phrase scan
         phrase_flags = scan_warning_phrases(response)
@@ -286,12 +317,15 @@ def verify_and_respond(
         verification_prompt = build_verification_prompt(
             response, context, phrase_flag_strs, sim_flag_strs,
         )
-        raw_verification = generate(
-            "You are a strict verification agent. Return only JSON.",
-            verification_prompt,
-            cfg,
-            max_tokens=1024,
-        )
+        try:
+            raw_verification = generate(
+                "You are a strict verification agent. Return only JSON.",
+                verification_prompt,
+                cfg,
+                max_tokens=1024,
+            )
+        except Exception:
+            raw_verification = ""
         vr = parse_verification_result(raw_verification)
 
         if vr.get("pass", False):
@@ -314,9 +348,40 @@ def verify_and_respond(
             + "\n\nRewrite your response to fix ALL issues. "
             "Use ONLY the provided context. Keep all citation rules."
         )
-        response = generate(
-            system_prompt, correction_prompt, cfg, max_tokens=soft_max
+        try:
+            response = generate(
+                system_prompt, correction_prompt, cfg, max_tokens=soft_max
+            )
+        except Exception:
+            break
+        # Guard: empty or None correction response
+        if not response or not response.strip():
+            response = initial_response
+            break
+
+    # ── Verify the final correction (last iteration corrected but never verified) ──
+    if response != initial_response:
+        phrase_flags = scan_warning_phrases(response)
+        similarity_flags = compute_similarity_flags(response, context, cfg)
+        vp = build_verification_prompt(
+            response, context,
+            [f["message"] for f in phrase_flags],
+            [f["message"] for f in similarity_flags],
         )
+        try:
+            vr = parse_verification_result(generate(
+                "You are a strict verification agent. Return only JSON.",
+                vp, cfg, max_tokens=1024,
+            ))
+        except Exception:
+            vr = {"pass": False, "errors": [], "error_count": 0}
+        if vr.get("pass", False):
+            return {
+                "response": response,
+                "refused": False,
+                "verification_passed": True,
+                "iterations": max_iterations,
+            }
 
     # ── Exhausted iterations ──────────────────────────────────────────────
     if strict_mode:

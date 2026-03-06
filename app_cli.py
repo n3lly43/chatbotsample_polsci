@@ -293,7 +293,7 @@ def main() -> None:
                     )
                 except Exception as e:
                     console.print(f"[yellow]Query understanding failed, using raw query: {e}[/yellow]")
-                    qu_result = {"action": "search", "search_query": user_input, "display_query": user_input, "original_query": user_input}
+                    qu_result = {"action": "search", "search_query": user_input, "display_query": user_input, "original_query": user_input, "route": "vector", "sql_query": None}
 
             # Handle clarification
             clarification_rounds = 0
@@ -321,7 +321,7 @@ def main() -> None:
                             state.get("conversation_history", []),
                         )
                     except Exception:
-                        qu_result = {"action": "search", "search_query": combined, "display_query": combined, "original_query": user_input}
+                        qu_result = {"action": "search", "search_query": combined, "display_query": combined, "original_query": user_input, "route": "vector", "sql_query": None}
                 clarification_rounds += 1
 
             # After max clarification rounds, force search

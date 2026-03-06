@@ -1,5 +1,6 @@
 """Document ingestion pipeline: files -> chunks -> embeddings -> ChromaDB."""
 
+import hashlib
 import os
 from pathlib import Path
 
@@ -175,10 +176,11 @@ def ingest_documents(cfg: dict = None, documents_dir: str = None) -> int:
     chunk_size = cfg.get("retrieval", {}).get("chunk_size", 1000)
     chunk_overlap = cfg.get("retrieval", {}).get("chunk_overlap", 100)
 
-    # Guard: overlap >= chunk_size would cause explosive chunk generation
-    if chunk_overlap >= chunk_size:
-        chunk_overlap = chunk_size // 5
-        print(f"Warning: chunk_overlap >= chunk_size, reducing overlap to {chunk_overlap}")
+    # Guard: overlap >= 80% of chunk_size would cause near-duplicate chunks
+    max_overlap = int(chunk_size * 0.8)
+    if chunk_overlap >= max_overlap:
+        print(f"Warning: chunk_overlap ({chunk_overlap}) >= 80% of chunk_size ({chunk_size}). Capping at {max_overlap}.")
+        chunk_overlap = max_overlap
 
     collection = get_chroma_collection(cfg)
 
@@ -204,27 +206,31 @@ def ingest_documents(cfg: dict = None, documents_dir: str = None) -> int:
         chunks = chunk_documents(pages, source_name, dataset_name, chunk_size, chunk_overlap)
         print(f"  -> {len(chunks)} chunks")
 
-        # Clear existing data only once we have new chunks to insert
-        if needs_clear and chunks:
-            existing = collection.count()
-            if existing > 0:
-                print(f"Clearing {existing} existing chunks...\n")
-                all_ids = collection.get().get("ids", [])
-                if all_ids:
-                    for ci in range(0, len(all_ids), 5000):
-                        collection.delete(ids=all_ids[ci:ci + 5000])
-            needs_clear = False
-
         batch_size = 100
+        safe_id_prefix = hashlib.md5(source_name.encode()).hexdigest()[:12]
+        file_chunks_added = 0
         for i in range(0, len(chunks), batch_size):
             batch = chunks[i:i + batch_size]
-            safe_id_prefix = source_name.replace("/", "_").replace(" ", "_")
             ids = [f"{safe_id_prefix}_{i + j}" for j in range(len(batch))]
             documents = [c.get("text", "") for c in batch]
             metadatas = [c.get("metadata", {}) for c in batch]
-            collection.add(ids=ids, documents=documents, metadatas=metadatas)
+            try:
+                # Clear existing data only on first successful add
+                if needs_clear:
+                    existing = collection.count()
+                    if existing > 0:
+                        print(f"Clearing {existing} existing chunks...\n")
+                        all_ids = collection.get().get("ids", [])
+                        if all_ids:
+                            for ci in range(0, len(all_ids), 5000):
+                                collection.delete(ids=all_ids[ci:ci + 5000])
+                    needs_clear = False
+                collection.add(ids=ids, documents=documents, metadatas=metadatas)
+                file_chunks_added += len(batch)
+            except Exception as e:
+                print(f"  Warning: Failed to embed batch for {source_name}: {e}")
 
-        total_chunks += len(chunks)
+        total_chunks += file_chunks_added
 
     # ── SQL ingestion for tabular files ──────────────────────────────
     sql_enabled = cfg.get("sql", {}).get("enabled", True)

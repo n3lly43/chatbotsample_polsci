@@ -162,13 +162,22 @@ def _parse_qu_result(raw: str, original_query: str) -> dict:
 
     # action == "search"
     search_query = parsed.get("search_query", original_query)
+    if not isinstance(search_query, str):
+        search_query = original_query
+
     display_query = parsed.get("display_query", original_query)
+    if not isinstance(display_query, str):
+        display_query = original_query
+
     route = parsed.get("route", "vector")
     if isinstance(route, str):
         route = route.strip().lower()
     if route not in ("sql", "vector", "both"):
         route = "vector"
+
     sql_query = parsed.get("sql_query") or None
+    if sql_query is not None and not isinstance(sql_query, str):
+        sql_query = None
     return {
         "action": "search",
         "search_query": search_query,

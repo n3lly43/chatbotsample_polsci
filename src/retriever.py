@@ -143,6 +143,65 @@ def _extract_table_from_query(sql_query: str) -> str:
     return match.group(1) if match else ""
 
 
+def _build_fallback_sql_query(query: str, cfg: dict) -> str | None:
+    """Build a simple keyword search SQL query as a last-resort fallback.
+
+    Loads the SQL schema, finds TEXT columns in the first table, and builds
+    a LIKE-based search across those columns. Returns None if no schema
+    or no text columns exist.
+    """
+    import json as _json
+    import os
+    from pathlib import Path
+
+    sql_db_dir = cfg.get("paths", {}).get("sql_db", "sql_db")
+    if not os.path.isabs(sql_db_dir):
+        project_root = Path(__file__).resolve().parent.parent
+        sql_db_dir = os.path.join(str(project_root), sql_db_dir)
+    schema_path = os.path.join(sql_db_dir, "sql_schemas.json")
+
+    try:
+        with open(schema_path) as f:
+            schema = _json.load(f)
+    except Exception:
+        return None
+
+    if not schema:
+        return None
+
+    max_rows = cfg.get("sql", {}).get("max_rows", 200)
+
+    # Extract meaningful search words (3+ chars, skip common stopwords)
+    stopwords = {"the", "and", "for", "are", "but", "not", "you", "all",
+                 "can", "had", "her", "was", "one", "our", "out", "has",
+                 "what", "how", "who", "which", "when", "where", "with",
+                 "from", "that", "this", "than", "then", "they", "been"}
+    words = [w for w in re.split(r'\W+', query.lower()) if len(w) >= 3 and w not in stopwords]
+    if not words:
+        return None
+
+    # Try first table with TEXT columns
+    for table_name, info in schema.items():
+        text_cols = [
+            c.get("name") for c in info.get("columns", [])
+            if c.get("type", "").upper() == "TEXT" and c.get("name")
+        ]
+        if not text_cols:
+            continue
+
+        conditions = []
+        for col in text_cols:
+            for word in words:
+                safe_word = word.replace("'", "''")
+                conditions.append(f'"{col}" LIKE \'%{safe_word}%\'')
+
+        if conditions:
+            where_clause = " OR ".join(conditions)
+            return f'SELECT * FROM "{table_name}" WHERE {where_clause} LIMIT {max_rows}'
+
+    return None
+
+
 def _run_sql_retrieval(sql_query: str, cfg: dict) -> tuple[list[dict], str]:
     """Execute SQL query and format results as context.
 
@@ -201,8 +260,11 @@ def retrieve(
         db_results = retrieve_from_vectordb(query, cfg)
 
     # ── Fallback: vector found nothing, try SQL ──────────────────────
-    if sql_enabled and not db_results and not sql_rows and route == "vector" and sql_query:
-        sql_rows, sql_context = _run_sql_retrieval(sql_query, cfg)
+    if sql_enabled and not db_results and not sql_rows and route in ("vector", "both"):
+        if not sql_query:
+            sql_query = _build_fallback_sql_query(query, cfg)
+        if sql_query:
+            sql_rows, sql_context = _run_sql_retrieval(sql_query, cfg)
 
     # ── Web search ───────────────────────────────────────────────────
     web_enabled = cfg.get("web_search", {}).get("enabled", False)

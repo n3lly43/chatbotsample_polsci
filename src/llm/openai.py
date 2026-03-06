@@ -7,13 +7,28 @@ def generate(system_prompt: str, user_message: str, api_key: str,
     model = model or "gpt-4o"
     from openai import OpenAI
     client = OpenAI(api_key=api_key)
-    response = client.chat.completions.create(
-        model=model, temperature=temperature, max_tokens=max_tokens,
-        messages=[
+    is_reasoning = model.startswith(("o1", "o3", "o4"))
+    if is_reasoning:
+        messages = [
+            {"role": "developer", "content": system_prompt},
+            {"role": "user", "content": user_message},
+        ]
+        response = client.chat.completions.create(
+            model=model,
+            messages=messages,
+            max_completion_tokens=max_tokens,
+        )
+    else:
+        messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_message},
-        ],
-    )
+        ]
+        response = client.chat.completions.create(
+            model=model,
+            messages=messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
     if not response.choices:
         return ""
     return response.choices[0].message.content or ""

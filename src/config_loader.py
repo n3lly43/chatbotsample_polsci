@@ -30,6 +30,12 @@ def load_config(config_path: str = None) -> dict:
     with open(config_path, "r", encoding="utf-8") as f:
         cfg = yaml.safe_load(f) or {}
 
+    # Normalize None-valued sections to empty dicts so chained .get() never
+    # fails with AttributeError (e.g. `llm:` with no sub-keys → None).
+    for key in list(cfg.keys()):
+        if cfg[key] is None:
+            cfg[key] = {}
+
     for provider, env_var in _ENV_KEY_MAP.items():
         env_val = os.environ.get(env_var)
         if env_val:

@@ -184,7 +184,7 @@ def render_chat():
             try:
                 qu_result = understand_query(combined, cfg, history)
             except Exception:
-                qu_result = {"action": "search", "search_query": combined, "display_query": combined, "original_query": original_query}
+                qu_result = {"action": "search", "search_query": combined, "display_query": combined, "original_query": original_query, "route": "vector", "sql_query": None}
 
             if qu_result.get("action") == "clarify" and st.session_state.clarification_rounds < max_clarifications:
                 # Ask clarification — store original query and question for context

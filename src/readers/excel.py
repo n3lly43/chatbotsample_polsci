@@ -11,15 +11,17 @@ def read_excel(file_path: str) -> list[dict]:
 def _read_xlsx(file_path: str) -> list[dict]:
     import openpyxl
     wb = openpyxl.load_workbook(file_path, read_only=True, data_only=True)
-    pages = []
-    for sheet_name in wb.sheetnames:
-        ws = wb[sheet_name]
-        rows = list(ws.iter_rows(values_only=True))
-        if not rows:
-            continue
-        pages.extend(_rows_to_pages(rows, sheet_name))
-    wb.close()
-    return pages
+    try:
+        pages = []
+        for sheet_name in wb.sheetnames:
+            ws = wb[sheet_name]
+            rows = list(ws.iter_rows(values_only=True))
+            if not rows:
+                continue
+            pages.extend(_rows_to_pages(rows, sheet_name))
+        return pages
+    finally:
+        wb.close()
 
 def _read_xls(file_path: str) -> list[dict]:
     import xlrd
@@ -36,6 +38,8 @@ def _read_xls(file_path: str) -> list[dict]:
     return pages
 
 def _rows_to_pages(rows: list[tuple], sheet_name: str) -> list[dict]:
+    if not rows:
+        return []
     headers = [str(h) if h is not None else "" for h in rows[0]]
     row_texts = []
     for row in rows[1:]:

@@ -144,6 +144,11 @@ RULES for SEARCH:
   that captures the user's full intent (including any clarification context).
   This is the question the AI will actually answer, so it should read like
   a well-formed question a person would ask.
+- USE THE KNOWLEDGE BASE OVERVIEW below to standardize your query: use the
+  exact dataset names, column names, file names, and terminology that appear
+  in the knowledge base. This ensures better retrieval matching.
+  (e.g., if the KB has a column "pts_a" for Political Terror Scale, rewrite
+  "terror scores" as "pts_a Political Terror Scale scores")
 
 RULES for CLARIFY:
 - ONLY ask for clarification when the question is genuinely ambiguous
@@ -152,6 +157,12 @@ RULES for CLARIFY:
 - Provide 2-3 options when possible
 - Do NOT ask for clarification on clear questions -- even if they are broad
 - A broad question is NOT the same as an ambiguous question
+- USE THE KNOWLEDGE BASE OVERVIEW below to formulate informed clarification
+  questions. Reference specific datasets, columns, topics, or file names
+  from the knowledge base as options so the user can choose.
+  (e.g., instead of "Could you be more specific?", ask "Do you mean the
+  PTS scores from the hr_data.csv dataset, or the CIRI scores from
+  ciri_dataset.dta?")
 
 {sql_routing_block}
 {kb_overview_block}

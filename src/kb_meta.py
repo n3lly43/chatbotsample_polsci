@@ -25,13 +25,21 @@ META_DATASET = "meta"
 _META_GENERATION_PROMPT = """\
 You are a knowledge base analyst. Given the following information about
 documents and data tables in a research knowledge base, write a concise
-overview (200-400 words) that covers:
+overview (200-500 words) that covers:
 
 1. **What is in the knowledge base**: List each document/dataset, its type,
    and a 1-sentence description of what it contains (based on the sample text).
 2. **Key topics and themes**: What subjects does this knowledge base cover?
 3. **Connections**: How do the different documents/datasets relate to each
    other? Do they share countries, time periods, variables, or methodologies?
+4. **Structured datasets**: For each structured data table, describe:
+   - **Unit of observation**: What does each row represent? (e.g., a country-year,
+     a person, a transaction, an event)
+   - **Key columns**: What do the most important columns measure or contain?
+     Use the column descriptions and codebook information provided below.
+   - If codebook-derived descriptions are provided, use them. If only column
+     names and sample values are available, infer the meaning and note that
+     the interpretation is inferred.
 
 Write in plain text, organized with clear headings. Be factual — only
 describe what you can see in the provided samples. Do not speculate.
@@ -98,15 +106,36 @@ def generate_kb_overview(
         lines.append(f"Structured data: {len(sql_schema)} SQL table(s).")
         lines.append("")
         for table_name, info in sql_schema.items():
-            cols = [c["name"] for c in info.get("columns", [])]
             row_count = info.get("row_count", 0)
             source = info.get("source_file", table_name)
-            col_list = ", ".join(cols[:10])
-            if len(cols) > 10:
-                col_list += f", ... ({len(cols)} total)"
+            table_desc = info.get("table_description", "")
+
             lines.append(f"  [{table_name}] from {source}")
-            lines.append(f"    {row_count} rows | Columns: {col_list}")
-        lines.append("")
+            header = f"    {row_count} rows"
+            if table_desc:
+                header += f" | {table_desc}"
+            lines.append(header)
+
+            for c in info.get("columns", []):
+                col_name = c.get("name", "unknown")
+                col_type = c.get("type", "TEXT")
+                desc = c.get("description", "")
+                stats = c.get("stats", {})
+                samples_list = c.get("sample", [])
+
+                parts = [f"      {col_name} ({col_type})"]
+                if stats.get("unique_count"):
+                    parts.append(f"{stats['unique_count']} unique")
+                if stats.get("min") is not None:
+                    parts.append(f"range {stats['min']}\u2013{stats['max']}")
+                if samples_list:
+                    quoted = ", ".join(str(s) for s in samples_list[:3])
+                    parts.append(f"e.g. {quoted}")
+                if desc:
+                    parts.append(f"\u2014 {desc}")
+
+                lines.append(", ".join(parts) if len(parts) > 1 else parts[0])
+            lines.append("")
 
     # ── Connection note ──────────────────────────────────────────────
     if len(datasets) > 1:
@@ -161,17 +190,49 @@ def generate_kb_overview_with_llm(
         sample_lines.append(f"[{source}]\n{preview}\n")
     samples = "\n".join(sample_lines) if sample_lines else "(no samples available)"
 
-    # Build SQL section
+    # Build SQL section with full column detail
     sql_section = ""
     if sql_schema:
-        sql_lines = ["--- SQL TABLES ---"]
+        sql_lines = ["--- STRUCTURED DATASETS (SQL TABLES) ---"]
         for table_name, info in sql_schema.items():
-            cols = ", ".join(c["name"] for c in info.get("columns", []))
-            sql_lines.append(
-                f"- {table_name} ({info.get('row_count', 0)} rows) "
-                f"from {info.get('source_file', '?')}: {cols}"
+            row_count = info.get("row_count", 0)
+            source = info.get("source_file", "?")
+            table_desc = info.get("table_description", "")
+
+            sql_lines.append(f"\nTable: {table_name} ({row_count} rows, from {source})")
+            if table_desc:
+                sql_lines.append(f"  Description: {table_desc}")
+
+            # Determine if descriptions came from a codebook or were inferred
+            has_descriptions = any(
+                c.get("description") for c in info.get("columns", [])
             )
-        sql_lines.append("--- END SQL TABLES ---\n")
+            if has_descriptions:
+                sql_lines.append("  Column descriptions (from codebook or LLM analysis):")
+            else:
+                sql_lines.append("  Columns (no codebook found — infer from names and samples):")
+
+            for c in info.get("columns", []):
+                col_name = c.get("name", "unknown")
+                col_type = c.get("type", "TEXT")
+                desc = c.get("description", "")
+                samples_list = c.get("sample", [])
+                stats = c.get("stats", {})
+
+                parts = [f"    - {col_name} [{col_type}]"]
+                if stats.get("unique_count"):
+                    parts.append(f"({stats['unique_count']} unique)")
+                if stats.get("min") is not None:
+                    parts.append(f"range: {stats['min']}\u2013{stats['max']}")
+                if samples_list:
+                    quoted = ", ".join(str(s) for s in samples_list[:5])
+                    parts.append(f"e.g. {quoted}")
+                if desc:
+                    parts.append(f"\u2014 {desc}")
+
+                sql_lines.append(" ".join(parts))
+
+        sql_lines.append("\n--- END STRUCTURED DATASETS ---\n")
         sql_section = "\n".join(sql_lines)
 
     prompt = _META_GENERATION_PROMPT.format(
