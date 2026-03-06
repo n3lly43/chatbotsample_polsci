@@ -2,8 +2,9 @@
 FALLBACK_MODELS = ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash"]
 
 def generate(system_prompt: str, user_message: str, api_key: str,
-             model: str = "gemini-2.5-flash", temperature: float = 0.0,
+             model: str = None, temperature: float = 0.0,
              max_tokens: int = 2048) -> str:
+    model = model or "gemini-2.5-flash"
     import google.generativeai as genai
     genai.configure(api_key=api_key)
     gen_model = genai.GenerativeModel(

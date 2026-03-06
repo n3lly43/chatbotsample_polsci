@@ -1,15 +1,23 @@
 """SQL retriever: execute validated queries against the SQLite knowledge base."""
 
 import os
+import re
 import sqlite3
 from pathlib import Path
+
+
+_DANGEROUS_KEYWORDS = re.compile(
+    r"\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|ATTACH|DETACH|PRAGMA|LOAD_EXTENSION)\b",
+    re.IGNORECASE,
+)
 
 
 def _validate_sql(sql: str) -> bool:
     """Validate that a SQL string is a safe SELECT query.
 
-    Rejects non-SELECT statements and queries containing semicolons
-    (which could chain dangerous statements).
+    Layer 1 of SQL injection protection (Layer 2 is the read-only connection).
+    Rejects non-SELECT statements, semicolons, and dangerous keywords
+    that could appear inside subqueries or UNION clauses.
     """
     stripped = sql.strip()
     if not stripped:
@@ -17,6 +25,8 @@ def _validate_sql(sql: str) -> bool:
     if ";" in stripped:
         return False
     if not stripped.upper().startswith("SELECT"):
+        return False
+    if _DANGEROUS_KEYWORDS.search(stripped):
         return False
     return True
 

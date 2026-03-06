@@ -19,7 +19,7 @@ def generate(system_prompt: str, user_message: str, cfg: dict,
     api_key = get_api_key(cfg, provider)
     if not api_key:
         raise ValueError(f"API key not set for {provider}. Set it in .env or config.yaml.")
-    model = llm_cfg.get("model") or ""
+    model = llm_cfg.get("model") or None
     temperature = llm_cfg.get("temperature", 0.0)
     if max_tokens is None:
         max_tokens = llm_cfg.get("max_tokens", 2048)

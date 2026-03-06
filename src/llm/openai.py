@@ -2,8 +2,9 @@
 FALLBACK_MODELS = ["gpt-4o", "gpt-4o-mini", "gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano"]
 
 def generate(system_prompt: str, user_message: str, api_key: str,
-             model: str = "gpt-4o", temperature: float = 0.0,
+             model: str = None, temperature: float = 0.0,
              max_tokens: int = 2048) -> str:
+    model = model or "gpt-4o"
     from openai import OpenAI
     client = OpenAI(api_key=api_key)
     response = client.chat.completions.create(
@@ -22,7 +23,7 @@ def list_models(api_key: str) -> list[str]:
         from openai import OpenAI
         client = OpenAI(api_key=api_key)
         models = client.models.list()
-        chat_models = sorted([m.id for m in models if "gpt" in m.id or m.id.startswith("o")])
+        chat_models = sorted([m.id for m in models if "gpt" in m.id or m.id.startswith(("o1", "o3", "o4"))])
         return chat_models if chat_models else FALLBACK_MODELS
     except Exception:
         return FALLBACK_MODELS

@@ -21,7 +21,13 @@ def load_config(config_path: str = None) -> dict:
     if env_path.exists():
         load_dotenv(str(env_path))
 
-    with open(config_path, "r") as f:
+    if not Path(config_path).exists():
+        raise FileNotFoundError(
+            f"Config file not found: {config_path}\n"
+            "Run 'python setup.py' first to generate config.yaml and .env."
+        )
+
+    with open(config_path, "r", encoding="utf-8") as f:
         cfg = yaml.safe_load(f) or {}
 
     for provider, env_var in _ENV_KEY_MAP.items():

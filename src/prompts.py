@@ -105,7 +105,7 @@ Run through this 9-point verification checklist and report results:
 3. Are there any claims that appear fabricated or hallucinated?
 4. Are direct quotes accurately reproduced from the context?
 5. Does the References section exist and list all cited sources?
-6. Is the source priority respected (CHUNK-LOCAL = CHUNK-SQL > CHUNK-WEB)?
+6. Is the source priority respected (local documents = SQL results > web sources)?
 7. Are any phrase-level flags confirmed as hallucinations?
 8. Do similarity flags indicate unsupported semantic drift?
 9. Is the response length proportional to the available evidence?
@@ -191,8 +191,10 @@ IMPORTANT: If the user asks about data summarization, counting, averaging,
 filtering, or any question that requires looking at dataset rows, ALWAYS
 set route to "sql" or "both".
 
-When route is "sql" or "both", also provide a valid SQLite SELECT query
-in the "sql_query" field. Use only table/column names from the schema below.
+When route is "sql" or "both", you MUST provide a valid SQLite SELECT query
+in the "sql_query" field. When route is "vector", you SHOULD still include
+a "sql_query" if the data tables might answer the question as a fallback.
+Use only table/column names from the schema below.
 
 {schema_text}
 """
