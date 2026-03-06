@@ -103,7 +103,9 @@ def format_sql_results_as_context(
             parts.append("")
 
     for i, row in enumerate(rows, 1):
-        fields = ", ".join(f"{k} = {v}" for k, v in row.items())
+        fields = ", ".join(
+            f"{k} = {v if v is not None else 'N/A'}" for k, v in row.items()
+        )
         parts.append(f"[CHUNK-SQL-{i:03d}] {fields}")
     return "\n".join(parts)
 
@@ -162,7 +164,8 @@ def build_schema_summary(schema: dict) -> str:
                 quoted = ", ".join(f'"{s}"' for s in samples[:5])
                 sample_str = f" e.g. {quoted}"
 
-            line = f"    {c['name']} ({meta_str}){sample_str}"
+            col_name = c.get("name", "unknown")
+            line = f"    {col_name} ({meta_str}){sample_str}"
             if desc:
                 line += f" \u2014 {desc}"
             lines.append(line)

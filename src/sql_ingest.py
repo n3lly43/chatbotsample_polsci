@@ -53,7 +53,10 @@ def _infer_column_type(values: list) -> str:
     # Try REAL
     try:
         for v in non_empty:
-            float(str(v).strip())
+            f = float(str(v).strip())
+            # Reject inf/nan — these are not valid REAL data
+            if not (-1e308 < f < 1e308):
+                raise ValueError("non-finite float")
         return "REAL"
     except (ValueError, TypeError):
         pass
@@ -84,6 +87,8 @@ def _get_sample_values(values: list, n: int = 5) -> list:
         sorted_vals = sorted(unique)
     if len(sorted_vals) <= n:
         return sorted_vals
+    if n <= 1:
+        return [sorted_vals[0]]
     # Pick evenly spaced indices including first and last
     indices = [round(i * (len(sorted_vals) - 1) / (n - 1)) for i in range(n)]
     return [sorted_vals[i] for i in indices]
@@ -348,12 +353,19 @@ def _load_rows_from_excel(file_path: str, ext: str) -> list[tuple]:
         return results
 
 
+def _safe_str(v):
+    """Convert a value to string, preserving None for missing data."""
+    if v is None:
+        return None
+    return str(v)
+
+
 def _load_rows_from_stata(file_path: str) -> list[tuple]:
     """Load Stata .dta into (None, headers, rows) tuples."""
     import pyreadstat
     df, _meta = pyreadstat.read_dta(file_path)
     headers = list(df.columns)
-    rows = [[str(v) for v in row] for row in df.values.tolist()]
+    rows = [[_safe_str(v) for v in row] for row in df.values.tolist()]
     return [(None, headers, rows)]
 
 
@@ -362,7 +374,7 @@ def _load_rows_from_spss(file_path: str) -> list[tuple]:
     import pyreadstat
     df, _meta = pyreadstat.read_sav(file_path)
     headers = list(df.columns)
-    rows = [[str(v) for v in row] for row in df.values.tolist()]
+    rows = [[_safe_str(v) for v in row] for row in df.values.tolist()]
     return [(None, headers, rows)]
 
 
@@ -373,7 +385,7 @@ def _load_rows_from_rdata(file_path: str) -> list[tuple]:
     tables = []
     for name, df in result.items():
         headers = list(df.columns)
-        rows = [[str(v) for v in row] for row in df.values.tolist()]
+        rows = [[_safe_str(v) for v in row] for row in df.values.tolist()]
         tables.append((name, headers, rows))
     return tables
 
@@ -487,6 +499,15 @@ def _ingest_tables(
 
             # Infer column types, collect samples and stats
             safe_headers = [_sanitize_column_name(h) for h in headers]
+            # Deduplicate: append _2, _3, etc. for collisions
+            seen: dict[str, int] = {}
+            for i, name in enumerate(safe_headers):
+                lower = name.lower()
+                if lower in seen:
+                    seen[lower] += 1
+                    safe_headers[i] = f"{name}_{seen[lower]}"
+                else:
+                    seen[lower] = 1
             col_types = []
             col_samples = []
             col_stats = []

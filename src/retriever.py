@@ -139,7 +139,7 @@ def build_combined_context(
 
 def _extract_table_from_query(sql_query: str) -> str:
     """Extract the first table name from a SQL query (best-effort)."""
-    match = re.search(r'\bFROM\s+"?(\w+)"?', sql_query, re.IGNORECASE)
+    match = re.search(r'\bFROM\s+["`]?(\w+)["`]?', sql_query, re.IGNORECASE)
     return match.group(1) if match else ""
 
 
