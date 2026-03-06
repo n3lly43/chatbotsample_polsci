@@ -96,18 +96,28 @@ def _lookup_source_file(table_name: str, schema: dict) -> str:
 def build_schema_summary(schema: dict) -> str:
     """Build a compact schema summary for injection into the QU prompt.
 
+    Includes sample values so the LLM knows what data looks like
+    (e.g., country names, value formats) for correct WHERE clauses.
+
     Format:
         Available SQL tables:
-        - table_name (N rows): col1 (TYPE), col2 (TYPE), ...
+        - table_name (N rows, from source_file):
+          col1 (TYPE) e.g. "val1", "val2"
+          col2 (TYPE) e.g. "val1", "val2"
     """
     if not schema:
         return ""
 
     lines = ["Available SQL tables:"]
     for table_name, info in schema.items():
-        cols = ", ".join(
-            f"{c['name']} ({c['type']})" for c in info.get("columns", [])
-        )
         row_count = info.get("row_count", 0)
-        lines.append(f"- {table_name} ({row_count} rows): {cols}")
+        source = info.get("source_file", "")
+        lines.append(f"\n- {table_name} ({row_count} rows, from {source}):")
+        for c in info.get("columns", []):
+            samples = c.get("sample", [])
+            sample_str = ""
+            if samples:
+                quoted = ", ".join(f'"{s}"' for s in samples[:3])
+                sample_str = f" e.g. {quoted}"
+            lines.append(f"    {c['name']} ({c['type']}){sample_str}")
     return "\n".join(lines)
