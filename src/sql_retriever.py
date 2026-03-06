@@ -64,11 +64,18 @@ def execute_sql_query(sql_query: str, cfg: dict) -> list[dict]:
 
 def format_sql_results_as_context(
     rows: list[dict], sql_query: str, source_file: str,
+    table_info: dict = None,
 ) -> str:
     """Format SQL result rows as context for the verification pipeline.
 
     Uses [CHUNK-SQL-NNN] IDs for internal anchoring, consistent with
     CHUNK-LOCAL and CHUNK-WEB patterns.
+
+    Args:
+        rows: Query result rows as dicts.
+        sql_query: The SQL query that produced these rows.
+        source_file: Original source file path.
+        table_info: Schema entry for the table (includes column descriptions).
     """
     if not rows:
         return ""
@@ -79,6 +86,22 @@ def format_sql_results_as_context(
         f"Source: {source_file}",
         f"Rows returned: {len(rows)}\n",
     ]
+
+    # Include table and column descriptions so the LLM understands the data
+    if table_info:
+        table_desc = table_info.get("table_description", "")
+        if table_desc:
+            parts.append(f"Dataset description: {table_desc}\n")
+        col_descs = {
+            c["name"]: c.get("description", "")
+            for c in table_info.get("columns", [])
+        }
+        desc_lines = [f"  {name}: {desc}" for name, desc in col_descs.items() if desc]
+        if desc_lines:
+            parts.append("Column descriptions:")
+            parts.extend(desc_lines)
+            parts.append("")
+
     for i, row in enumerate(rows, 1):
         fields = ", ".join(f"{k} = {v}" for k, v in row.items())
         parts.append(f"[CHUNK-SQL-{i:03d}] {fields}")
@@ -96,14 +119,9 @@ def _lookup_source_file(table_name: str, schema: dict) -> str:
 def build_schema_summary(schema: dict) -> str:
     """Build a compact schema summary for injection into the QU prompt.
 
-    Includes sample values so the LLM knows what data looks like
-    (e.g., country names, value formats) for correct WHERE clauses.
-
-    Format:
-        Available SQL tables:
-        - table_name (N rows, from source_file):
-          col1 (TYPE) e.g. "val1", "val2"
-          col2 (TYPE) e.g. "val1", "val2"
+    Includes column descriptions (from codebook or LLM inference),
+    sample values, and statistics so the LLM knows what data looks like
+    for correct WHERE clauses and aggregation queries.
     """
     if not schema:
         return ""
@@ -112,12 +130,40 @@ def build_schema_summary(schema: dict) -> str:
     for table_name, info in schema.items():
         row_count = info.get("row_count", 0)
         source = info.get("source_file", "")
-        lines.append(f"\n- {table_name} ({row_count} rows, from {source}):")
+        table_desc = info.get("table_description", "")
+
+        header = f"\n- {table_name} ({row_count} rows, from {source})"
+        if table_desc:
+            header += f"\n  Description: {table_desc}"
+        lines.append(header + ":")
+
         for c in info.get("columns", []):
+            col_type = c.get("type", "TEXT")
+            stats = c.get("stats", {})
             samples = c.get("sample", [])
+            desc = c.get("description", "")
+
+            # Build metadata string
+            meta_parts = [col_type]
+            unique_count = stats.get("unique_count")
+            col_min = stats.get("min")
+            col_max = stats.get("max")
+
+            if col_min is not None and col_max is not None:
+                meta_parts.append(f"range {col_min}\u2013{col_max}")
+            if unique_count is not None:
+                meta_parts.append(f"{unique_count} unique")
+
+            meta_str = ", ".join(meta_parts)
+
+            # Build sample string
             sample_str = ""
             if samples:
-                quoted = ", ".join(f'"{s}"' for s in samples[:3])
+                quoted = ", ".join(f'"{s}"' for s in samples[:5])
                 sample_str = f" e.g. {quoted}"
-            lines.append(f"    {c['name']} ({c['type']}){sample_str}")
+
+            line = f"    {c['name']} ({meta_str}){sample_str}"
+            if desc:
+                line += f" \u2014 {desc}"
+            lines.append(line)
     return "\n".join(lines)

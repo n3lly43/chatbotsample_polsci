@@ -10,6 +10,15 @@ from pathlib import Path
 # Extensions that trigger SQL ingestion (tabular formats)
 SQL_EXTENSIONS = {".csv", ".tab", ".tsv", ".xlsx", ".xls", ".dta", ".sav", ".rds", ".rda"}
 
+# Extensions that might contain codebook/documentation
+_CODEBOOK_EXTENSIONS = {".pdf", ".docx", ".txt", ".md"}
+
+# Keywords suggesting a file is a codebook
+_CODEBOOK_KEYWORDS = {
+    "codebook", "readme", "dictionary", "documentation",
+    "manual", "guide", "metadata", "variable", "description",
+}
+
 
 def _sanitize_part(s: str) -> str:
     """Sanitize a single name part: replace non-alnum with _, collapse, strip."""
@@ -51,19 +60,246 @@ def _infer_column_type(values: list) -> str:
     return "TEXT"
 
 
-def _get_sample_values(values: list, n: int = 3) -> list:
-    """Get up to n unique non-empty sample values."""
+def _get_sample_values(values: list, n: int = 5) -> list:
+    """Get a representative spread of up to n unique non-empty sample values.
+
+    Instead of taking the first n values (which may be biased by sort order),
+    picks evenly spaced values from the sorted unique set so the LLM sees
+    the full range (e.g., first, middle, last country names).
+    """
+    unique = []
     seen = set()
-    samples = []
     for v in values:
         if v is not None and str(v).strip() and str(v).lower() != "nan":
             v_str = str(v).strip()
             if v_str not in seen:
                 seen.add(v_str)
-                samples.append(v_str)
-                if len(samples) >= n:
+                unique.append(v_str)
+    if not unique:
+        return []
+    sorted_vals = sorted(unique)
+    if len(sorted_vals) <= n:
+        return sorted_vals
+    # Pick evenly spaced indices including first and last
+    indices = [round(i * (len(sorted_vals) - 1) / (n - 1)) for i in range(n)]
+    return [sorted_vals[i] for i in indices]
+
+
+def _get_column_stats(values: list, col_type: str) -> dict:
+    """Compute column statistics for schema metadata.
+
+    Returns dict with 'unique_count' and optionally 'min'/'max' for numerics.
+    """
+    non_empty = [
+        str(v).strip() for v in values
+        if v is not None and str(v).strip() and str(v).lower() != "nan"
+    ]
+    unique_count = len(set(non_empty))
+    stats = {"unique_count": unique_count}
+    if col_type == "INTEGER" and non_empty:
+        try:
+            nums = [int(v) for v in non_empty]
+            stats["min"] = min(nums)
+            stats["max"] = max(nums)
+        except (ValueError, TypeError):
+            pass
+    elif col_type == "REAL" and non_empty:
+        try:
+            nums = [float(v) for v in non_empty]
+            stats["min"] = min(nums)
+            stats["max"] = max(nums)
+        except (ValueError, TypeError):
+            pass
+    return stats
+
+
+def _find_codebook_files(tabular_file: Path) -> list[Path]:
+    """Search for codebook/documentation files in the same directory as the tabular file."""
+    parent = tabular_file.parent
+    candidates = []
+    for f in sorted(parent.iterdir()):
+        if not f.is_file():
+            continue
+        if f.suffix.lower() not in _CODEBOOK_EXTENSIONS:
+            continue
+        candidates.append(f)
+
+    # Sort: files with codebook keywords in name come first
+    def priority(p):
+        name_lower = p.stem.lower()
+        return 0 if any(kw in name_lower for kw in _CODEBOOK_KEYWORDS) else 1
+
+    candidates.sort(key=priority)
+    return candidates
+
+
+def _read_codebook_text(codebook_files: list[Path], max_chars: int = 4000) -> str:
+    """Read codebook files and return concatenated text, truncated."""
+    from src.readers import read_file
+
+    texts = []
+    total = 0
+    for f in codebook_files:
+        try:
+            pages = read_file(str(f))
+            text = "\n".join(p.get("text", "") for p in pages).strip()
+            if text:
+                texts.append(f"[From: {f.name}]\n{text}")
+                total += len(text)
+                if total >= max_chars:
                     break
-    return samples
+        except Exception:
+            continue
+
+    combined = "\n\n".join(texts)
+    if len(combined) > max_chars:
+        combined = combined[:max_chars] + "..."
+    return combined
+
+
+def _describe_columns_with_llm(
+    table_name: str,
+    source_file: str,
+    columns_info: list[dict],
+    codebook_text: str,
+    cfg: dict,
+) -> dict:
+    """Use LLM to generate column and table descriptions.
+
+    Args:
+        table_name: SQL table name.
+        source_file: Original file path relative to knowledge base.
+        columns_info: Column metadata dicts (name, type, sample, stats).
+        codebook_text: Text from codebook files (empty if none found).
+        cfg: App config for LLM access.
+
+    Returns:
+        Dict with 'table_description' and 'columns' mapping name -> description.
+        Empty dict on failure.
+    """
+    from src.llm import generate
+
+    col_lines = []
+    for c in columns_info:
+        name = c["name"]
+        orig = c.get("original_name", name)
+        ctype = c.get("type", "TEXT")
+        samples = c.get("sample", [])
+        stats = c.get("stats", {})
+
+        parts = [f"- {name}"]
+        if orig != name:
+            parts.append(f"(originally: {orig})")
+        parts.append(f"[{ctype}]")
+        if stats.get("unique_count"):
+            parts.append(f"({stats['unique_count']} unique)")
+        if stats.get("min") is not None:
+            parts.append(f"range: {stats['min']}\u2013{stats['max']}")
+        if samples:
+            parts.append(f"e.g. {', '.join(str(s) for s in samples[:5])}")
+
+        col_lines.append(" ".join(parts))
+
+    cols_detail = "\n".join(col_lines)
+
+    if codebook_text:
+        codebook_section = (
+            "\nDocumentation/codebook found for this dataset:\n"
+            "--- CODEBOOK ---\n"
+            f"{codebook_text}\n"
+            "--- END CODEBOOK ---\n"
+            "Use the codebook to provide accurate column descriptions."
+        )
+    else:
+        codebook_section = (
+            "\nNo codebook found. Infer column meanings from names, "
+            "types, and sample values. Note what is inferred."
+        )
+
+    prompt = (
+        f"Analyze this dataset and describe what each column represents.\n\n"
+        f"Table: {table_name}\n"
+        f"Source: {source_file}\n\n"
+        f"Columns:\n{cols_detail}\n"
+        f"{codebook_section}\n\n"
+        "Return ONLY valid JSON (no markdown fences, no explanation):\n"
+        "{\n"
+        '  "table_description": "What this table/dataset contains (1-2 sentences)",\n'
+        '  "columns": {\n'
+        '    "column_name": "What this column represents (1 sentence)"\n'
+        "  }\n"
+        "}"
+    )
+
+    try:
+        response = generate(
+            "You are a data analyst. Describe dataset columns concisely and accurately.",
+            prompt,
+            cfg,
+            max_tokens=1024,
+        )
+        text = response.strip()
+        start = text.find("{")
+        end = text.rfind("}") + 1
+        if start >= 0 and end > start:
+            return json.loads(text[start:end])
+        return {}
+    except Exception:
+        return {}
+
+
+def _enrich_schema_with_descriptions(
+    schema_registry: dict,
+    tabular_files: list[tuple],
+    documents_dir: str,
+    cfg: dict,
+) -> None:
+    """Add LLM-generated column descriptions to the schema registry.
+
+    For each table:
+    1. Search for codebook/documentation files near the source file.
+    2. If found, use LLM + codebook to describe columns.
+    3. If not, use LLM + column names/samples to infer descriptions.
+
+    Modifies schema_registry in place.
+    """
+    # Build mapping from source_file (relative) -> absolute Path
+    source_to_path: dict[str, Path] = {}
+    for file_path, _dataset_name in tabular_files:
+        if file_path.suffix.lower() in SQL_EXTENSIONS:
+            try:
+                rel_path = str(file_path.relative_to(documents_dir))
+                source_to_path[rel_path] = file_path
+            except ValueError:
+                continue
+
+    for table_name, info in schema_registry.items():
+        source_file = info.get("source_file", "")
+        file_path = source_to_path.get(source_file)
+
+        # Find and read codebook files
+        codebook_text = ""
+        if file_path:
+            codebook_files = _find_codebook_files(file_path)
+            if codebook_files:
+                codebook_text = _read_codebook_text(codebook_files)
+                print(f"  Found codebook for {table_name}: "
+                      f"{[f.name for f in codebook_files]}")
+
+        # Get LLM descriptions
+        descriptions = _describe_columns_with_llm(
+            table_name, source_file, info["columns"], codebook_text, cfg,
+        )
+
+        if descriptions:
+            info["table_description"] = descriptions.get("table_description", "")
+            col_descs = descriptions.get("columns", {})
+            for col in info["columns"]:
+                col["description"] = col_descs.get(col["name"], "")
+            method = "codebook" if codebook_text else "inferred"
+            print(f"  Described {table_name} columns ({method})")
+        else:
+            print(f"  Could not generate descriptions for {table_name}")
 
 
 def _load_rows_from_csv(file_path: str, ext: str) -> list[tuple]:
@@ -204,6 +440,15 @@ def ingest_to_sql(files: list[tuple], documents_dir: str, cfg: dict) -> dict:
     finally:
         conn.close()
 
+    # Enrich with LLM-generated column descriptions
+    if schema_registry:
+        try:
+            _enrich_schema_with_descriptions(
+                schema_registry, tabular_files, documents_dir, cfg,
+            )
+        except Exception as e:
+            print(f"  Column description generation failed (non-fatal): {e}")
+
     with open(schema_path, "w", encoding="utf-8") as f:
         json.dump(schema_registry, f, indent=2, default=str)
 
@@ -232,14 +477,17 @@ def _ingest_tables(
         for sheet_or_name, headers, rows in tables:
             table_name = _sanitize_table_name(dataset_name, file_path.stem, ext, sheet_or_name)
 
-            # Infer column types and collect samples
+            # Infer column types, collect samples and stats
             safe_headers = [_sanitize_column_name(h) for h in headers]
             col_types = []
             col_samples = []
+            col_stats = []
             for col_idx in range(len(headers)):
                 col_values = [row[col_idx] if col_idx < len(row) else None for row in rows]
-                col_types.append(_infer_column_type(col_values))
+                ctype = _infer_column_type(col_values)
+                col_types.append(ctype)
                 col_samples.append(_get_sample_values(col_values))
+                col_stats.append(_get_column_stats(col_values, ctype))
 
             # Create table
             col_defs = ", ".join(f'"{h}" {t}' for h, t in zip(safe_headers, col_types))
@@ -282,6 +530,7 @@ def _ingest_tables(
                         "original_name": headers[i],
                         "type": col_types[i],
                         "sample": col_samples[i],
+                        "stats": col_stats[i],
                     }
                     for i in range(len(headers))
                 ],

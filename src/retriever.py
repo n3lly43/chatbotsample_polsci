@@ -171,7 +171,10 @@ def _run_sql_retrieval(sql_query: str, cfg: dict) -> tuple[list[dict], str]:
             pass
     table_name = _extract_table_from_query(sql_query)
     source_file = _lookup_source_file(table_name, schema)
-    sql_context = format_sql_results_as_context(sql_rows, sql_query, source_file)
+    table_info = schema.get(table_name)
+    sql_context = format_sql_results_as_context(
+        sql_rows, sql_query, source_file, table_info=table_info,
+    )
     return sql_rows, sql_context
 
 
