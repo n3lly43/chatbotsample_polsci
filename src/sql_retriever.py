@@ -73,6 +73,11 @@ def execute_sql_query(sql_query: str, cfg: dict) -> list[dict]:
     # Strip comments before validation AND execution
     sql_query = _strip_sql_comments(sql_query).strip()
 
+    # Strip trailing semicolons — LLMs add them ~90% of the time.
+    # Must happen AFTER comment removal but BEFORE validation, so that
+    # _validate_sql() still rejects internal semicolons (statement chaining).
+    sql_query = sql_query.rstrip(";").rstrip()
+
     if not _validate_sql(sql_query):
         return []
 

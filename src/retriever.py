@@ -259,12 +259,29 @@ def retrieve(
     if route in ("vector", "both") or (route == "sql" and not sql_rows):
         db_results = retrieve_from_vectordb(query, cfg)
 
-    # ── Fallback: vector found nothing, try SQL ──────────────────────
-    if sql_enabled and not db_results and not sql_rows and route in ("vector", "both"):
-        if not sql_query:
-            sql_query = _build_fallback_sql_query(query, cfg)
-        if sql_query:
-            sql_rows, sql_context = _run_sql_retrieval(sql_query, cfg)
+    # ── Fallback: try keyword-based SQL when primary path returned nothing ─
+    #   - route "vector"/"both": vector found nothing → try SQL keyword search
+    #   - route "sql": LLM SQL query failed → try SQL keyword search as last resort
+    sql_fallback_needed = (
+        sql_enabled
+        and not sql_rows
+        and (
+            (route in ("vector", "both") and not db_results)
+            or route == "sql"
+        )
+    )
+    if sql_fallback_needed:
+        if route == "sql":
+            # LLM-generated sql_query already failed; build a fresh keyword query
+            fallback_query = _build_fallback_sql_query(query, cfg)
+            if fallback_query:
+                sql_rows, sql_context = _run_sql_retrieval(fallback_query, cfg)
+        else:
+            # route is "vector" or "both" — existing fallback logic
+            if not sql_query:
+                sql_query = _build_fallback_sql_query(query, cfg)
+            if sql_query:
+                sql_rows, sql_context = _run_sql_retrieval(sql_query, cfg)
 
     # ── Web search ───────────────────────────────────────────────────
     web_enabled = cfg.get("web_search", {}).get("enabled", False)
