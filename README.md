@@ -32,12 +32,13 @@ A **citation-verified research assistant chatbot** that answers questions using 
 You give the chatbot a collection of research documents (journal articles, datasets, reports, codebooks). When you ask a question, it:
 
 1. **Knows what it knows** -- during ingestion, the chatbot builds a meta-overview of its entire knowledge base so it can answer questions like "What data do you have?" and contextualize every answer within the bigger picture
-2. **Searches your documents** for relevant passages using vector similarity
-3. **Queries your datasets** directly using SQL for filtering, aggregation, and lookups
-4. **Optionally searches the web** for supplementary academic papers (via Semantic Scholar)
-5. **Generates an answer** grounded only in the retrieved sources
-6. **Cites every claim** with numbered endnote references (e.g., `[1]`, `[2]`)
-7. **Verifies the answer** against the sources before showing it to you
+2. **Understands your question** -- reformulates vague or follow-up queries for better search, asks for clarification when genuinely ambiguous, and routes to the right search strategy
+3. **Searches your documents** for relevant passages using vector similarity
+4. **Queries your datasets** directly using SQL for filtering, aggregation, and lookups
+5. **Optionally searches the web** for supplementary academic papers (via Semantic Scholar)
+6. **Generates an answer** grounded only in the retrieved sources
+7. **Cites every claim** with numbered endnote references (e.g., `[1]`, `[2]`)
+8. **Verifies the answer** against the sources before showing it to you
 
 If the chatbot cannot find relevant information in your documents, it **refuses to answer** rather than guessing. This is by design -- an incomplete answer is always better than a fabricated one.
 
@@ -80,11 +81,11 @@ Before you begin, you will need:
    - **Mac**: Open Terminal and type `python3 --version`. If you don't have Python, download it from [python.org](https://www.python.org/downloads/)
    - **Windows**: Download from [python.org](https://www.python.org/downloads/). During installation, check the box that says "Add Python to PATH"
 2. **An API key** from one of these AI providers (you only need one):
-   - [OpenAI](https://platform.openai.com/api-keys) (GPT-4o, GPT-4.1)
-   - [Anthropic](https://console.anthropic.com/) (Claude Sonnet, Claude Opus)
+   - [OpenAI](https://platform.openai.com/api-keys) (GPT-4.1, GPT-4o)
+   - [Anthropic](https://console.anthropic.com/) (Claude Sonnet 4.6, Claude Opus 4.6)
    - [Google](https://aistudio.google.com/apikey) (Gemini 2.5 Pro, Gemini 2.5 Flash)
 
-> **Cost note:** These AI providers charge per query. A typical research session (50--100 questions) costs roughly $0.50--$5.00 depending on the model you choose. Smaller models (GPT-4o-mini, Claude Haiku, Gemini Flash) are significantly cheaper.
+> **Cost note:** These AI providers charge per query. A typical research session (50--100 questions) costs roughly $0.50--$5.00 depending on the model you choose. Smaller models (GPT-4.1-mini, Claude Haiku 4.5, Gemini Flash) are significantly cheaper.
 
 ---
 
@@ -147,6 +148,8 @@ The wizard creates two files:
 - `config.yaml` -- your chatbot's settings
 - `.env` -- your API key (kept private, never uploaded to GitHub)
 
+If you run the wizard again, it will **merge** your new API key with any existing keys in `.env` rather than overwriting them, so you can safely add multiple providers over time.
+
 ### 5. Add your documents
 
 Copy your research files into the `knowledge_base/` folder. You can organize them into subfolders:
@@ -191,6 +194,12 @@ KB overview generated and indexed.
 Ingestion complete: 89 chunks from 5 files.
 ```
 
+**What happens during ingestion:**
+- **Document chunking**: PDFs, Word files, and text are split into overlapping chunks for vector search
+- **Dual ingestion for tabular data**: CSV, Excel, Stata, SPSS, and R files are loaded into both the vector database (for conceptual questions) and a SQLite database (for structured queries like filtering and aggregation)
+- **Schema enrichment**: The chatbot automatically detects codebooks in your folders (files named "codebook", "readme", "data dictionary", etc.) and uses them with LLM analysis to generate human-readable column descriptions for your datasets
+- **KB meta overview**: An LLM-generated summary of the entire knowledge base, enabling the chatbot to answer meta-questions like "What data do you have?"
+
 ### 7. Start the chatbot
 
 **Terminal interface** (recommended for getting started):
@@ -229,7 +238,7 @@ The chatbot can read **15 file types** commonly used in social science research:
 | `.json` | JSON | Full file contents |
 | `.do` | Stata do-files | Full script contents (treated as text) |
 
-> **Note on datasets:** Tabular files (`.csv`, `.tab`, `.tsv`, `.xlsx`, `.xls`, `.dta`, `.sav`, `.rds`, `.rda`) get **dual ingestion**: they are stored in both the vector database (for conceptual questions like "what does PTS measure?") and a local SQLite database (for structured queries like "PTS scores for China" or "how many countries are in the dataset?"). The SQL layer handles filtering, aggregation, and precise lookups that vector search cannot do. For very large datasets (100,000+ rows), ingestion will be slow. Consider using a representative subset.
+> **Note on datasets:** Tabular files (`.csv`, `.tab`, `.tsv`, `.xlsx`, `.xls`, `.dta`, `.sav`, `.rds`, `.rda`) get **dual ingestion**: they are stored in both the vector database (for conceptual questions like "what does PTS measure?") and a local SQLite database (for structured queries like "PTS scores for China" or "how many countries are in the dataset?"). The SQL layer handles filtering, aggregation, and precise lookups that vector search cannot do. Leading zeros in identifier columns (zip codes, FIPS codes) are automatically preserved as text. For very large datasets (100,000+ rows), ingestion will be slow. Consider using a representative subset.
 
 ---
 
@@ -289,6 +298,7 @@ You ask a question
                 -- Has full awareness of the KB contents (via meta overview)
                 -- Expands abbreviations, resolves follow-up references
                 -- May ask a clarification question if genuinely ambiguous
+                -- Produces a search-optimized query AND a display query
                 -- Routes to vector search, SQL, or both
         |
         v
@@ -299,7 +309,7 @@ You ask a question
               -- Optionally search Semantic Scholar for academic papers
         |
         v
- 3. GENERATE -- Send the question + retrieved passages to the AI model
+ 3. GENERATE -- Send the display query + retrieved passages to the AI model
               -- System prompt includes KB overview for broader context
               -- System prompt enforces strict citation rules
         |
@@ -319,7 +329,7 @@ You ask a question
 - **Your documents always come first.** Local sources (both vector search results and SQL query results) are the primary authority. Web sources (if enabled) are supplementary and never override your documents.
 - **No sources = no answer.** If the chatbot cannot find relevant passages in your documents or the web, it will say so rather than make something up.
 - **Smart query routing.** The chatbot automatically decides how to search: conceptual questions go to vector search, data lookups go to SQL, and mixed questions use both. If one path returns nothing, it falls back to the other.
-- **Smart query understanding.** Before searching, the chatbot reformulates your question to improve retrieval accuracy -- expanding abbreviations, resolving references from prior conversation, and adding relevant keywords. It shows you what it searched for, so you can see how your question was interpreted.
+- **Smart query understanding.** Before searching, the chatbot reformulates your question to improve retrieval accuracy -- expanding abbreviations, resolving references from prior conversation, and adding relevant keywords. It shows you what it searched for, so you can see how your question was interpreted. After clarification, it produces a clear, well-formed question for the response AI so nothing is lost in translation.
 - **Self-aware.** The chatbot knows what's in its knowledge base. Ask "What data do you have?" and it will tell you, instead of refusing because it can't find a matching chunk.
 - **Every claim gets a citation.** The answer format uses numbered endnotes (`[1]`, `[2]`, etc.) with a full reference list at the bottom.
 - **Direct quotes are marked.** When the chatbot uses three or more consecutive words from a source, they appear in quotation marks.
@@ -340,14 +350,17 @@ When you ingest tabular files (CSV, Excel, Stata, SPSS, R data), they are loaded
 
 **How it works:**
 
-1. During ingestion, the chatbot reads the table structure (column names, types, row counts) and saves a schema registry
-2. When you ask a question, the AI sees the available table schemas and decides whether to use SQL, vector search, or both
-3. For SQL queries, the AI generates a SQLite SELECT statement, which is validated (SELECT-only, no semicolons) and executed against a read-only database connection
-4. SQL results are formatted as context and fed into the same verification pipeline as vector search results
+1. During ingestion, the chatbot reads the table structure (column names, types, row counts) and saves a schema registry with column statistics (unique value counts, min/max ranges for numeric columns, sample values)
+2. If codebook files are found near the dataset, the chatbot uses them to generate human-readable column descriptions (e.g., "PTS_A: Political Terror Scale score from Amnesty International reports, range 1-5")
+3. When you ask a question, the AI sees the available table schemas (with descriptions, statistics, and samples) and decides whether to use SQL, vector search, or both
+4. For SQL queries, the AI generates a SQLite SELECT statement, which is validated and executed against a read-only database connection
+5. SQL results are formatted as context and fed into the same verification pipeline as vector search results
 
-**Safety:** SQL injection is prevented by two layers: (1) queries must be a single SELECT statement with no semicolons, and (2) the SQLite connection is opened in read-only mode.
+**Safety:** SQL injection is prevented by three layers: (1) queries must be a single SELECT statement with no semicolons, (2) dangerous keywords (INSERT, DELETE, DROP, ALTER, CREATE, ATTACH, etc.) are blocklisted, and (3) the SQLite connection is opened in read-only mode.
 
-**Graceful degradation:** If no tabular files are ingested, the SQL layer is silently skipped and the chatbot works identically to a vector-only system. If a SQL query fails or returns no results, the chatbot falls back to vector search.
+**Data integrity:** Leading zeros in identifier columns (zip codes like "01234", FIPS codes like "007") are automatically detected and preserved as text rather than being converted to integers.
+
+**Graceful degradation:** If no tabular files are ingested, the SQL layer is silently skipped and the chatbot works identically to a vector-only system. If a SQL query fails or returns no results, the chatbot falls back to vector search. If the AI wraps SQL in markdown code fences, they are automatically stripped before execution.
 
 ---
 
@@ -383,6 +396,8 @@ Large language models (like GPT-4 or Claude) sometimes generate plausible-soundi
 **Layers 4 and 5 produce advisory flags** -- they don't automatically reject the answer. Instead, their flags are passed to Layer 3 (the self-verification loop) so the AI can pay extra attention to those sections.
 
 **What "strict mode" means:** When `strict_mode: true` (the default), the chatbot will refuse to answer if verification fails after all correction attempts. When `strict_mode: false`, it will show the answer with a warning instead.
+
+**Provider-specific handling:** If an AI provider blocks a response due to safety filters (e.g., Google Gemini's content filtering), the chatbot detects this immediately and returns a clear explanation instead of entering the verification loop with a blocked response.
 
 ---
 
@@ -480,7 +495,8 @@ The container mounts your `knowledge_base/`, `chroma_db/`, `sql_db/`, `config.ya
 - **Full citation trail.** Every factual claim is tied to a specific source with page numbers or URLs. You can trace any claim back to the original document and verify it yourself.
 - **Works with your own documents.** Unlike general-purpose chatbots, this one answers from *your* knowledge base. Your PDFs, datasets, and codebooks are the primary authority.
 - **Knows what it knows.** The chatbot builds a meta-overview of its entire knowledge base during ingestion. It can answer meta-questions like "What datasets do you have?" and contextualizes every answer within the broader picture. This is unlike typical RAG systems that are blind to their own contents.
-- **Structured data queries.** Ask questions like "PTS scores for China along the years" or "how many countries are in the dataset?" and the chatbot queries your datasets directly using SQL -- no more imprecise vector search over tabular data.
+- **Structured data queries.** Ask questions like "PTS scores for China along the years" or "how many countries are in the dataset?" and the chatbot queries your datasets directly using SQL -- no more imprecise vector search over tabular data. Schema enrichment with automatic codebook detection means the AI understands what each column means.
+- **Smart query understanding.** The chatbot reformulates your questions for better search, resolves pronouns and follow-up references from conversation history, asks clarification when needed, and routes each query to the best search strategy (vector, SQL, or both). It produces optimized queries for both retrieval and response generation.
 - **Reads 15 file formats.** Handles the formats social scientists actually use: Stata `.dta`, SPSS `.sav`, R `.rds`/`.rda`, Excel, CSV, PDF, Word, and plain text. No file conversion needed.
 - **No data leaves your computer (except to the AI provider).** Your documents are stored locally in a vector database and SQLite database on your own machine. They are not uploaded to any cloud storage. Only the relevant text chunks or query results are sent to the AI provider as part of each query.
 - **Swappable AI providers.** Switch between OpenAI, Anthropic, and Google Gemini without changing your documents or setup. Use whatever provider your institution has access to.
@@ -516,9 +532,9 @@ Run `python setup.py` again, or manually create a `.env` file in the project roo
 OPENAI_API_KEY=sk-your-key-here
 ```
 
-### "Failed to load config"
+### "Failed to load config" or configuration error at startup
 
-Run `python setup.py` to generate `config.yaml`, or check that the file exists in the project root.
+Run `python setup.py` to generate `config.yaml`, or check that the file exists in the project root. The web interface will show a clear error message if `config.yaml` is missing.
 
 ### The chatbot keeps refusing to answer
 
