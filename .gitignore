@@ -1,4 +1,5 @@
 .env
+config.yaml
 chroma_db/
 sql_db/
 __pycache__/

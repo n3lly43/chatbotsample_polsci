@@ -8,30 +8,34 @@ def generate(system_prompt: str, user_message: str, api_key: str,
     from openai import OpenAI
     client = OpenAI(api_key=api_key)
     is_reasoning = model.startswith(("o1", "o3", "o4"))
-    if is_reasoning:
-        messages = [
-            {"role": "developer", "content": system_prompt},
-            {"role": "user", "content": user_message},
-        ]
-        response = client.chat.completions.create(
-            model=model,
-            messages=messages,
-            max_completion_tokens=max_tokens,
-        )
-    else:
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_message},
-        ]
-        response = client.chat.completions.create(
-            model=model,
-            messages=messages,
-            temperature=temperature,
-            max_tokens=max_tokens,
-        )
-    if not response.choices:
-        return ""
-    return response.choices[0].message.content or ""
+    try:
+        if is_reasoning:
+            messages = [
+                {"role": "developer", "content": system_prompt},
+                {"role": "user", "content": user_message},
+            ]
+            response = client.chat.completions.create(
+                model=model,
+                messages=messages,
+                max_completion_tokens=max_tokens,
+            )
+        else:
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message},
+            ]
+            response = client.chat.completions.create(
+                model=model,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+        if not response.choices:
+            return ""
+        return response.choices[0].message.content or ""
+    except Exception as e:
+        error_type = type(e).__name__
+        raise RuntimeError(f"OpenAI API error ({error_type}). Check your API key and network connection.") from e
 
 def list_models(api_key: str) -> list[str]:
     try:

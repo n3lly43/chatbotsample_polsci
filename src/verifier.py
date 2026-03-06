@@ -148,6 +148,60 @@ def compute_similarity_flags(
     return flags
 
 
+def validate_citations(response: str, retrieval_result: dict) -> list[str]:
+    """Deterministic citation audit (Layer 4.5).
+
+    Checks that:
+    - Citation numbers [N] in the response body don't exceed source count.
+    - References section lists source names that match actual retrieved sources.
+
+    Returns a list of warning strings (empty if all checks pass).
+    """
+    warnings = []
+
+    # Count actual sources available
+    db_count = len(retrieval_result.get("db_results", []))
+    web_count = len(retrieval_result.get("web_results", []))
+    sql_count = len(retrieval_result.get("sql_results", []))
+    total_sources = db_count + web_count + sql_count
+
+    if total_sources == 0:
+        return warnings
+
+    # Extract citation numbers from response body
+    citation_nums = set(int(m) for m in re.findall(r"\[(\d+)\]", response))
+    if not citation_nums:
+        return warnings
+
+    max_citation = max(citation_nums)
+    if max_citation > total_sources:
+        warnings.append(
+            f"Citation [{max_citation}] exceeds available source count "
+            f"({total_sources}). Possible fabricated reference."
+        )
+
+    # Check that source file names from retrieval appear in the References section
+    refs_match = re.search(r"(?i)\b(references|sources)\b.*", response, re.DOTALL)
+    if refs_match:
+        refs_text = refs_match.group(0).lower()
+        db_results = retrieval_result.get("db_results", [])
+        matched_sources = 0
+        for chunk in db_results:
+            source = chunk.get("metadata", {}).get("source", "")
+            if source:
+                # Check for filename (last component of path)
+                filename = source.rsplit("/", 1)[-1].lower()
+                if filename in refs_text:
+                    matched_sources += 1
+        if db_results and matched_sources == 0:
+            warnings.append(
+                "References section does not mention any filenames from "
+                "the retrieved local sources. Citations may be fabricated."
+            )
+
+    return warnings
+
+
 # ── Layer 3 helper: parse LLM verification JSON ──────────────────────────────
 
 def parse_verification_result(raw: str) -> dict:
@@ -269,7 +323,9 @@ def verify_and_respond(
 
     # ── Guard: detect provider-level content blocks ────────────────────────
     lower_resp = response.lower()
-    if lower_resp.startswith("[gemini blocked") or lower_resp.startswith("[blocked"):
+    if (lower_resp.startswith("[gemini blocked")
+            or lower_resp.startswith("[gemini error")
+            or lower_resp.startswith("[blocked")):
         return {
             "response": (
                 "The LLM provider blocked this request due to content "
@@ -280,9 +336,14 @@ def verify_and_respond(
             "iterations": 0,
         }
 
+    # ── Layer 4.5: Deterministic citation audit ───────────────────────
+    citation_warnings = validate_citations(response, retrieval_result)
+
     # ── Short-circuit if verification is disabled ─────────────────────────
     verification_cfg = cfg.get("verification", {})
     if not verification_cfg.get("enabled", True):
+        print("WARNING: Verification is disabled (verification.enabled=false). "
+              "Responses may contain ungrounded claims.")
         return {
             "response": response,
             "refused": False,
@@ -295,6 +356,8 @@ def verify_and_respond(
 
     # Guard: max_iterations=0 with enabled=true → skip verification
     if max_iterations <= 0:
+        print("WARNING: Verification iterations set to 0. "
+              "Anti-hallucination verification is effectively disabled.")
         return {
             "response": response,
             "refused": False,
@@ -313,9 +376,14 @@ def verify_and_respond(
         sim_flags = compute_similarity_flags(response, context, cfg)
         sim_flag_strs = [f["message"] for f in sim_flags]
 
+        # Layer 4.5: Citation audit (recomputed each iteration after corrections)
+        citation_warnings = validate_citations(response, retrieval_result)
+        citation_flag_strs = citation_warnings if citation_warnings else []
+
         # Layer 3: LLM-as-verifier
+        all_sim_flags = sim_flag_strs + citation_flag_strs
         verification_prompt = build_verification_prompt(
-            response, context, phrase_flag_strs, sim_flag_strs,
+            response, context, phrase_flag_strs, all_sim_flags,
         )
         try:
             raw_verification = generate(
@@ -342,10 +410,11 @@ def verify_and_respond(
         # Correct and loop for re-verification
         correction_prompt = (
             f"The user's original question was: {query}\n\n"
-            f"Your previous response failed verification with "
+            f"Your previous response was:\n{response}\n\n"
+            f"This response failed verification with "
             f"{error_count} error(s):\n"
             + json.dumps(vr.get("errors", []), indent=2)
-            + "\n\nRewrite your response to fix ALL issues. "
+            + "\n\nRewrite your response to fix ALL the issues listed above. "
             "Use ONLY the provided context. Keep all citation rules."
         )
         try:
@@ -363,10 +432,12 @@ def verify_and_respond(
     if response != initial_response:
         phrase_flags = scan_warning_phrases(response)
         similarity_flags = compute_similarity_flags(response, context, cfg)
+        citation_flags_final = validate_citations(response, retrieval_result)
+        all_sim_final = [f["message"] for f in similarity_flags] + citation_flags_final
         vp = build_verification_prompt(
             response, context,
             [f["message"] for f in phrase_flags],
-            [f["message"] for f in similarity_flags],
+            all_sim_final,
         )
         try:
             vr = parse_verification_result(generate(
@@ -398,6 +469,8 @@ def verify_and_respond(
         "against the provided sources. Some claims may lack adequate "
         "grounding. Please cross-check important facts."
     )
+    if citation_warnings:
+        warning += "\n**Citation issues:** " + "; ".join(citation_warnings)
     return {
         "response": response + warning,
         "refused": False,

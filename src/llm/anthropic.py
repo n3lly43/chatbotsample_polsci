@@ -7,14 +7,18 @@ def generate(system_prompt: str, user_message: str, api_key: str,
     model = model or "claude-sonnet-4-6"
     from anthropic import Anthropic
     client = Anthropic(api_key=api_key)
-    response = client.messages.create(
-        model=model, max_tokens=max_tokens, temperature=temperature,
-        system=system_prompt,
-        messages=[{"role": "user", "content": user_message}],
-    )
-    if not response.content:
-        return ""
-    return response.content[0].text or ""
+    try:
+        response = client.messages.create(
+            model=model, max_tokens=max_tokens, temperature=temperature,
+            system=system_prompt,
+            messages=[{"role": "user", "content": user_message}],
+        )
+        if not response.content:
+            return ""
+        return response.content[0].text or ""
+    except Exception as e:
+        error_type = type(e).__name__
+        raise RuntimeError(f"Anthropic API error ({error_type}). Check your API key and network connection.") from e
 
 def list_models(api_key: str) -> list[str]:
     try:

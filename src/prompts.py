@@ -98,10 +98,10 @@ problems.
 {similarity_flags}
 --- END SIMILARITY FLAGS ---
 
-Run through this 9-point verification checklist and report results:
+Run through this 10-point verification checklist and report results:
 
 1. Does every factual claim have a numbered citation endnote (e.g. [1], [2])?
-2. Are all citations grounded in the provided context?
+2. For each cited claim, can you find the EXACT sentence or data point in the context that supports it? If you cannot point to specific supporting text, flag it as an error.
 3. Are there any claims that appear fabricated or hallucinated?
 4. Are direct quotes accurately reproduced from the context?
 5. Does the References section exist and list all cited sources?
@@ -109,6 +109,7 @@ Run through this 9-point verification checklist and report results:
 7. Are any phrase-level flags confirmed as hallucinations?
 8. Do similarity flags indicate unsupported semantic drift?
 9. Is the response length proportional to the available evidence?
+10. Do the citation numbers match the correct sources? (e.g., [1] must refer to the first source listed in References, and that source must actually support the claim)
 
 Return your analysis as JSON in the following format:
 

@@ -161,6 +161,47 @@ def ingest_documents(cfg: dict = None, documents_dir: str = None) -> int:
     if not files:
         print(f"No supported files found in {documents_dir}")
         print(f"Supported types: {', '.join(sorted(READERS.keys()))}")
+        # Clear stale data from previous ingestions
+        try:
+            collection = get_chroma_collection(cfg)
+            existing = collection.count()
+            if existing > 0:
+                print(f"Clearing {existing} stale chunks from previous ingestion...")
+                all_ids = collection.get().get("ids", [])
+                if all_ids:
+                    for ci in range(0, len(all_ids), 5000):
+                        collection.delete(ids=all_ids[ci:ci + 5000])
+        except Exception as e:
+            print(f"Warning: Could not clear vector DB: {e}")
+        # Clear SQL database
+        sql_enabled = cfg.get("sql", {}).get("enabled", True)
+        if sql_enabled:
+            try:
+                sql_db_dir = cfg.get("paths", {}).get("sql_db", "sql_db")
+                if not os.path.isabs(sql_db_dir):
+                    project_root = Path(__file__).resolve().parent.parent
+                    sql_db_dir = os.path.join(str(project_root), sql_db_dir)
+                db_file = os.path.join(sql_db_dir, "knowledge_base.db")
+                schema_file = os.path.join(sql_db_dir, "sql_schemas.json")
+                if os.path.exists(db_file):
+                    os.remove(db_file)
+                    print("Cleared stale SQL database.")
+                if os.path.exists(schema_file):
+                    os.remove(schema_file)
+            except Exception as e:
+                print(f"Warning: Could not clear SQL database: {e}")
+        # Clear KB meta
+        try:
+            db_path = cfg.get("paths", {}).get("vector_db", "chroma_db")
+            if not os.path.isabs(db_path):
+                project_root = Path(__file__).resolve().parent.parent
+                db_path = os.path.join(str(project_root), db_path)
+            meta_file = os.path.join(db_path, "kb_meta.txt")
+            if os.path.exists(meta_file):
+                os.remove(meta_file)
+                print("Cleared stale KB overview.")
+        except Exception as e:
+            print(f"Warning: Could not clear KB meta: {e}")
         return 0
 
     # Summarize
