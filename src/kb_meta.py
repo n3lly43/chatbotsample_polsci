@@ -334,12 +334,18 @@ def load_sql_schema(cfg: dict) -> dict | None:
         return None
 
 
-def save_kb_meta(overview_text: str, cfg: dict) -> None:
-    """Save the overview text to a file alongside the vector DB."""
+def _resolve_db_path(cfg: dict) -> str:
+    """Resolve the vector DB directory path from config."""
     db_path = cfg.get("paths", {}).get("vector_db", "chroma_db")
     if not os.path.isabs(db_path):
         project_root = Path(__file__).resolve().parent.parent
         db_path = os.path.join(str(project_root), db_path)
+    return db_path
+
+
+def save_kb_meta(overview_text: str, cfg: dict) -> None:
+    """Save the overview text to a file alongside the vector DB."""
+    db_path = _resolve_db_path(cfg)
     os.makedirs(db_path, exist_ok=True)
     meta_path = os.path.join(db_path, "kb_meta.txt")
     with open(meta_path, "w", encoding="utf-8") as f:
@@ -348,10 +354,7 @@ def save_kb_meta(overview_text: str, cfg: dict) -> None:
 
 def load_kb_meta(cfg: dict) -> str:
     """Load the KB overview text from file. Returns empty string if not found."""
-    db_path = cfg.get("paths", {}).get("vector_db", "chroma_db")
-    if not os.path.isabs(db_path):
-        project_root = Path(__file__).resolve().parent.parent
-        db_path = os.path.join(str(project_root), db_path)
+    db_path = _resolve_db_path(cfg)
     meta_path = os.path.join(db_path, "kb_meta.txt")
     if not os.path.exists(meta_path):
         return ""
@@ -360,6 +363,86 @@ def load_kb_meta(cfg: dict) -> str:
             return f.read()
     except Exception:
         return ""
+
+
+_BRIEF_OVERVIEW_PROMPT = """\
+Given the following detailed knowledge base overview, write a brief
+high-level summary (3-5 sentences). Cover:
+- What types of documents and datasets are in the KB
+- The main topics/themes
+- Time periods and geographic scope if applicable
+
+Do NOT list individual files, column names, or technical details.
+Write in plain text, no headings or bullet points.
+
+--- FULL OVERVIEW ---
+{full_overview}
+--- END ---
+
+Write the brief summary now:"""
+
+
+def generate_brief_overview(full_overview: str, cfg: dict) -> str:
+    """Generate a brief high-level summary from the full KB overview.
+
+    Used in the system prompt where only general awareness is needed.
+    Falls back to first 3 sentences of the full overview if LLM fails.
+    """
+    if not full_overview:
+        return ""
+
+    # Strip markers for clean input
+    clean = full_overview
+    for marker in ("=== KNOWLEDGE BASE OVERVIEW ===", "=== END OVERVIEW ==="):
+        clean = clean.replace(marker, "")
+    clean = clean.strip()
+    if not clean:
+        return ""
+
+    try:
+        from src.llm import generate
+        prompt = _BRIEF_OVERVIEW_PROMPT.format(full_overview=clean)
+        brief = generate(
+            "You are a concise summarizer. Be brief and factual.",
+            prompt,
+            cfg,
+            max_tokens=256,
+        )
+        if brief and brief.strip():
+            return brief.strip()
+    except Exception:
+        pass
+
+    # Fallback: extract first 3 sentences
+    import re
+    sentences = re.split(r'(?<=[.!?])\s+', clean)
+    fallback = " ".join(sentences[:3])
+    if len(fallback) > 400:
+        fallback = fallback[:400].rsplit(" ", 1)[0] + "..."
+    return fallback
+
+
+def save_kb_meta_brief(brief_text: str, cfg: dict) -> None:
+    """Save the brief overview to a file alongside the vector DB."""
+    db_path = _resolve_db_path(cfg)
+    os.makedirs(db_path, exist_ok=True)
+    meta_path = os.path.join(db_path, "kb_meta_brief.txt")
+    with open(meta_path, "w", encoding="utf-8") as f:
+        f.write(brief_text)
+
+
+def load_kb_meta_brief(cfg: dict) -> str:
+    """Load the brief KB overview. Falls back to full overview if not found."""
+    db_path = _resolve_db_path(cfg)
+    meta_path = os.path.join(db_path, "kb_meta_brief.txt")
+    if os.path.exists(meta_path):
+        try:
+            with open(meta_path, "r", encoding="utf-8") as f:
+                return f.read()
+        except Exception:
+            pass
+    # Fallback: return full overview
+    return load_kb_meta(cfg)
 
 
 def upsert_meta_chunk(collection, overview_text: str) -> None:
@@ -400,6 +483,12 @@ def build_and_store_overview(collection, cfg: dict) -> str:
 
     save_kb_meta(overview, cfg)
     upsert_meta_chunk(collection, overview)
+
+    # Generate and save brief version for system prompt injection
+    brief = generate_brief_overview(overview, cfg)
+    if brief:
+        save_kb_meta_brief(brief, cfg)
+
     return overview
 
 

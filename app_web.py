@@ -239,7 +239,10 @@ def render_chat():
                 # Response generation uses display_query — a clear,
                 # complete question that incorporates any clarification context
                 try:
-                    result = verify_and_respond(display_query, retrieval_result, cfg)
+                    result = verify_and_respond(
+                        display_query, retrieval_result, cfg,
+                        original_query=original_query,
+                    )
                 except Exception as e:
                     status.update(label=f"Generation error: {e}", state="error")
                     st.error(f"Response generation failed: {e}")

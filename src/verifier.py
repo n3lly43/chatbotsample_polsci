@@ -264,15 +264,18 @@ def parse_verification_result(raw: str) -> dict:
 # ── Main entry point ─────────────────────────────────────────────────────────
 
 def verify_and_respond(
-    query: str, retrieval_result: dict, cfg: dict
+    query: str, retrieval_result: dict, cfg: dict,
+    original_query: str = "",
 ) -> dict:
     """Generate a response and run it through the 6-layer verification stack.
 
     Args:
-        query: The user's original question.
+        query: The display query (reformulated by QU layer).
         retrieval_result: Dict from ``src.retriever.retrieve`` containing
             ``context``, ``db_results``, ``web_results``, ``has_sources``.
         cfg: Full application configuration dict.
+        original_query: The user's raw input before QU reformulation.
+            Included in the user message so the LLM can cross-check intent.
 
     Returns:
         A dict with keys:
@@ -296,9 +299,9 @@ def verify_and_respond(
     llm_cfg = cfg.get("llm", {})
     default_max = llm_cfg.get("max_tokens", 2048)
 
-    # ── Load KB overview for general awareness ────────────────────────────
-    from src.kb_meta import load_kb_meta
-    kb_overview = load_kb_meta(cfg)
+    # ── Load KB overview for general awareness (brief version) ──────────
+    from src.kb_meta import load_kb_meta_brief
+    kb_overview = load_kb_meta_brief(cfg)
 
     # ── Layer 2: Soft max-token cap ───────────────────────────────────────
     soft_max = compute_soft_max_tokens(len(context), default_max)
@@ -306,8 +309,19 @@ def verify_and_respond(
     # ── Layer 1: System prompt guardrails (built into prompt) ─────────────
     system_prompt = build_prompt(context, bot_name, domain, kb_overview=kb_overview)
 
+    # ── Build user message with original query for intent cross-check ────
+    if original_query and original_query != query:
+        user_message = (
+            f"{query}\n\n"
+            f"(Original message from the user: \"{original_query}\". "
+            f"If the reformulated question above misunderstood the user's "
+            f"intent, prioritize answering what the user originally asked.)"
+        )
+    else:
+        user_message = query
+
     # ── Generate initial response ─────────────────────────────────────────
-    response = generate(system_prompt, query, cfg, max_tokens=soft_max)
+    response = generate(system_prompt, user_message, cfg, max_tokens=soft_max)
 
     # ── Guard: empty response from LLM ────────────────────────────────────
     if not response or not response.strip():

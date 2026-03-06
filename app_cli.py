@@ -361,7 +361,10 @@ def main() -> None:
         # ── Generate + verify ───────────────────────────────────────────
         with console.status("[bold blue]Generating response...[/bold blue]"):
             try:
-                result = verify_and_respond(display_query, retrieval_result, effective_cfg)
+                result = verify_and_respond(
+                    display_query, retrieval_result, effective_cfg,
+                    original_query=user_input,
+                )
             except Exception as e:
                 console.print(f"[red]Generation error: {e}[/red]")
                 continue
