@@ -10,15 +10,18 @@ A **citation-verified research assistant chatbot** that answers questions using 
 
 - [What This Does](#what-this-does)
 - [Prerequisites](#prerequisites)
-- [Installation (Step by Step)](#installation-step-by-step)
+- [Quick Start (Step by Step)](#quick-start-step-by-step)
 - [Supported File Formats](#supported-file-formats)
 - [Using the Chatbot](#using-the-chatbot)
   - [Terminal Interface (CLI)](#terminal-interface-cli)
   - [Web Interface](#web-interface)
-- [How It Works](#how-it-works)
-- [SQL Layer: Structured Data Queries](#sql-layer-structured-data-queries)
-- [KB Self-Awareness: The Meta Overview](#kb-self-awareness-the-meta-overview)
-- [Anti-Hallucination: How the Chatbot Stays Honest](#anti-hallucination-how-the-chatbot-stays-honest)
+- [How It Works: The Full Pipeline](#how-it-works-the-full-pipeline)
+  - [Step 0: Ingestion](#step-0-ingestion--building-the-knowledge-base)
+  - [Step 1: Query Understanding](#step-1-query-understanding)
+  - [Step 2: Retrieval](#step-2-retrieval)
+  - [Step 3: Response Generation](#step-3-response-generation)
+  - [Step 4: Verification](#step-4-verification-6-layer-anti-hallucination-stack)
+  - [Step 5: Display](#step-5-display)
 - [Configuration Reference](#configuration-reference)
 - [Docker (Optional)](#docker-optional)
 - [Advantages and Limitations](#advantages-and-limitations)
@@ -29,10 +32,10 @@ A **citation-verified research assistant chatbot** that answers questions using 
 
 ## What This Does
 
-You give the chatbot a collection of research documents (journal articles, datasets, reports, codebooks). When you ask a question, it:
+You give the chatbot a collection of research documents (journal articles, datasets, codebooks). When you ask a question, it:
 
-1. **Knows what it knows** -- during ingestion, the chatbot builds a meta-overview of its entire knowledge base so it can answer questions like "What data do you have?" and contextualize every answer within the bigger picture
-2. **Understands your question** -- reformulates vague or follow-up queries for better search, asks for clarification when genuinely ambiguous, and routes to the right search strategy
+1. **Knows what it knows** -- during ingestion, the chatbot builds a meta-overview of its entire knowledge base so it can answer questions like "What datasets do you have?" and contextualize every answer within the bigger picture
+2. **Understands your question** -- reformulates vague or follow-up queries for better search, asks for clarification when genuinely ambiguous, and routes to the right search strategy (vector search, SQL, or both)
 3. **Searches your documents** for relevant passages using vector similarity
 4. **Queries your datasets** directly using SQL for filtering, aggregation, and lookups
 5. **Optionally searches the web** for supplementary academic papers (via Semantic Scholar)
@@ -40,35 +43,57 @@ You give the chatbot a collection of research documents (journal articles, datas
 7. **Cites every claim** with numbered endnote references (e.g., `[1]`, `[2]`)
 8. **Verifies the answer** against the sources before showing it to you
 
-If the chatbot cannot find relevant information in your documents, it **refuses to answer** rather than guessing. This is by design -- an incomplete answer is always better than a fabricated one.
+If the chatbot cannot find relevant information in your documents, it **refuses to answer** rather than guessing. This is by design -- an incomplete answer grounded in sources is always better than a fabricated one.
 
-### Example Output
+### Example
+
+Suppose you have the **NAVCO 2.0** (Nonviolent and Violent Campaigns and Outcomes) dataset in your knowledge base -- a CSV file, its codebook PDF, and the original Chenoweth & Stephan (2011) publication. You ask:
+
+> **You:** Why do nonviolent campaigns succeed more often than violent ones?
+
+The chatbot searches your documents, verifies its answer, and responds:
 
 ```
 Nonviolent campaigns succeeded approximately 53% of the time between
-1900 and 2006, compared to 26% for violent insurgencies. [1] As stated
-in [1]: "nonviolent resistance campaigns were nearly twice as likely
-to achieve full or partial success."
+1900 and 2006, compared to 26% for violent insurgencies [1]. As stated
+in [1]: "nonviolent resistance campaigns were nearly twice as likely to
+achieve full or partial success."
 
-Campaigns that achieved large-scale, diverse participation were
-significantly more likely to succeed. [1][2] The NAVCO 2.0 codebook
-classifies primary resistance methods including protests, strikes,
-boycotts, and other forms of noncooperation. [2] Security force
-defections were also identified as a key mechanism linking mass
-participation to campaign success. [3]
+The primary mechanism is participation advantage. Nonviolent campaigns
+attract significantly larger and more diverse participation, which
+increases the likelihood of security force defections -- a key
+mediating factor in campaign success [1][2]. The NAVCO 2.0 dataset
+codes campaigns along dimensions including primary resistance method,
+peak membership, and security force defections [3].
 
 **References**
 
 **Local Sources (Primary):**
-[1] Chenoweth_Stephan_2011.pdf (p. 23)
-    -- knowledge_base/NAVCO 2.0/Chenoweth_Stephan_2011.pdf
-[2] NAVCO2JPRcodebook2013.pdf (p. 7)
-    -- knowledge_base/NAVCO 2.0/NAVCO2JPRcodebook2013.pdf
+[1] Chenoweth_Stephan_2011.pdf, p. 23
+    -- knowledge_base/NAVCO/Chenoweth_Stephan_2011.pdf
+[2] Chenoweth_Stephan_2011.pdf, p. 46
+    -- knowledge_base/NAVCO/Chenoweth_Stephan_2011.pdf
+[3] NAVCO2_codebook_2013.pdf, p. 7
+    -- knowledge_base/NAVCO/NAVCO2_codebook_2013.pdf
+```
 
-**Web Sources (Supplementary):**
-[3] Nepstad, S.E. (2011). "Nonviolent Revolutions: Civil Resistance
-    in the Late 20th Century."
-    DOI: https://doi.org/10.1093/acprof:oso/9780199778201.001.0001
+You can also ask data questions directly:
+
+> **You:** How many nonviolent campaigns succeeded after 2000?
+
+```
+Searching for: "nonviolent campaigns success_year > 2000 camp_goals"
+Using SQL query for structured data
+
+According to the NAVCO 2.0 dataset, 14 nonviolent campaigns that
+began after 2000 achieved full or partial success (success = 1 or 2)
+out of 31 total nonviolent campaigns in that period [1].
+
+**References**
+
+**Local Sources (Primary):**
+[1] SQL query on navco__navco_2_0_data_csv
+    -- knowledge_base/NAVCO/navco_2.0_data.csv
 ```
 
 ---
@@ -89,7 +114,7 @@ Before you begin, you will need:
 
 ---
 
-## Installation (Step by Step)
+## Quick Start (Step by Step)
 
 ### 1. Download the project
 
@@ -135,10 +160,10 @@ python setup.py
 
 The wizard walks you through five questions:
 
-| Step | What it asks | What to enter |
-|------|-------------|---------------|
-| 1 | Bot name | Whatever you like (e.g., "My Research Assistant") |
-| 2 | Domain | A short description of your topic (e.g., "political science") |
+| Step | What it asks | Example |
+|------|-------------|---------|
+| 1 | Bot name | "NAVCO Research Assistant" |
+| 2 | Domain | "nonviolent and violent campaigns and outcomes" |
 | 3 | LLM provider | Choose OpenAI, Anthropic, or Google Gemini |
 | 3b | API key | Paste your API key (it will be hidden as you type) |
 | 4 | Model | Pick from the list of available models |
@@ -156,12 +181,11 @@ Copy your research files into the `knowledge_base/` folder. You can organize the
 
 ```
 knowledge_base/
-  NAVCO 2.0/
-    NAVCO2JPRcodebook2013.pdf
-    navco2_dataset.csv
-  Survey Data/
-    responses.xlsx
-    codebook.docx
+  NAVCO/
+    Chenoweth_Stephan_2011.pdf
+    Stephan_Chenoweth_2008_APSR.pdf
+    NAVCO2_codebook_2013.pdf
+    navco_2.0_data.csv
   notes.txt
 ```
 
@@ -174,30 +198,34 @@ python ingest.py
 This reads all your files, splits them into searchable chunks, and stores them in a local vector database. Tabular files (CSV, Excel, Stata, SPSS, R data) are also loaded into a local SQLite database for structured queries. You only need to re-run this when you add, remove, or change documents.
 
 ```
-Found 5 files across 2 dataset(s):
+Found 4 files across 1 dataset(s):
 
-  NAVCO 2.0: 3 files (.csv, .pdf)
-  Survey Data: 2 files (.docx, .xlsx)
+  NAVCO: 4 files (.csv, .pdf)
 
-Processing: NAVCO 2.0/NAVCO2JPRcodebook2013.pdf
+Processing: NAVCO/Chenoweth_Stephan_2011.pdf
+  -> 47 chunks
+Processing: NAVCO/Stephan_Chenoweth_2008_APSR.pdf
+  -> 28 chunks
+Processing: NAVCO/NAVCO2_codebook_2013.pdf
   -> 12 chunks
-...
+Processing: NAVCO/navco_2.0_data.csv
+  -> 18 chunks
 
-Ingesting 2 tabular file(s) into SQLite...
-  SQL: navco_2_0__navco2_dataset_csv (15234 rows, 12 columns)
-  SQL: survey_data__responses_xlsx (500 rows, 8 columns)
-SQL ingestion complete: 2 table(s).
+Ingesting 1 tabular file(s) into SQLite...
+  SQL: navco__navco_2_0_data_csv (392 rows, 18 columns)
+SQL ingestion complete: 1 table(s).
 
 Generating knowledge base overview...
 KB overview generated and indexed.
 
-Ingestion complete: 89 chunks from 5 files.
+Ingestion complete: 105 chunks from 4 files.
 ```
 
 **What happens during ingestion:**
+
 - **Document chunking**: PDFs, Word files, and text are split into overlapping chunks for vector search
-- **Dual ingestion for tabular data**: CSV, Excel, Stata, SPSS, and R files are loaded into both the vector database (for conceptual questions) and a SQLite database (for structured queries like filtering and aggregation)
-- **Schema enrichment**: The chatbot automatically detects codebooks in your folders (files named "codebook", "readme", "data dictionary", etc.) and uses them with LLM analysis to generate human-readable column descriptions for your datasets
+- **Dual ingestion for tabular data**: CSV, Excel, Stata, SPSS, and R files are loaded into both the vector database (for conceptual questions like "what does success mean in NAVCO?") and a SQLite database (for structured queries like "how many campaigns succeeded?")
+- **Schema enrichment**: The chatbot automatically detects codebooks (files named "codebook", "readme", "data dictionary", etc.) and uses them with LLM analysis to generate human-readable column descriptions for your datasets (e.g., `success: Campaign outcome — 1 = success, 2 = partial success, 3 = failure`)
 - **KB meta overview**: An LLM-generated summary of the entire knowledge base, enabling the chatbot to answer meta-questions like "What data do you have?"
 
 ### 7. Start the chatbot
@@ -238,7 +266,7 @@ The chatbot can read **15 file types** commonly used in social science research:
 | `.json` | JSON | Full file contents |
 | `.do` | Stata do-files | Full script contents (treated as text) |
 
-> **Note on datasets:** Tabular files (`.csv`, `.tab`, `.tsv`, `.xlsx`, `.xls`, `.dta`, `.sav`, `.rds`, `.rda`) get **dual ingestion**: they are stored in both the vector database (for conceptual questions like "what does PTS measure?") and a local SQLite database (for structured queries like "PTS scores for China" or "how many countries are in the dataset?"). The SQL layer handles filtering, aggregation, and precise lookups that vector search cannot do. Leading zeros in identifier columns (zip codes, FIPS codes) are automatically preserved as text. For very large datasets (100,000+ rows), ingestion will be slow. Consider using a representative subset.
+> **Note on datasets:** Tabular files (`.csv`, `.tab`, `.tsv`, `.xlsx`, `.xls`, `.dta`, `.sav`, `.rds`, `.rda`) get **dual ingestion**: they are stored in both the vector database (for conceptual questions) and a local SQLite database (for structured queries). The SQL layer handles filtering, aggregation, and precise lookups that vector search cannot do. Leading zeros in identifier columns (zip codes, FIPS codes) are automatically preserved as text. For very large datasets (100,000+ rows), ingestion will be slow -- consider using a representative subset.
 
 ---
 
@@ -288,116 +316,172 @@ Changes you make in the sidebar (switching models, toggling web search) apply on
 
 ---
 
-## How It Works
+## How It Works: The Full Pipeline
+
+This section walks through what happens under the hood from the moment you add documents to the moment you see an answer. Every example uses the **NAVCO 2.0** project (the Nonviolent and Violent Campaigns and Outcomes dataset by Chenoweth & Stephan) as a running illustration.
 
 ```
-You ask a question
-        |
-        v
- 1. UNDERSTAND -- The AI reformulates your question for better search
-                -- Has full awareness of the KB contents (via meta overview)
-                -- Expands abbreviations, resolves follow-up references
-                -- May ask a clarification question if genuinely ambiguous
-                -- Produces a search-optimized query AND a display query
-                -- Routes to vector search, SQL, or both
-        |
-        v
- 2. RETRIEVE -- route="vector": search your local vector database
-              -- route="sql": run a SQL query against your datasets
-              -- route="both": run both, merge results
-              -- Fallback: if the chosen path returns nothing, try the other
-              -- Optionally search Semantic Scholar for academic papers
-        |
-        v
- 3. GENERATE -- Send the display query + retrieved passages to the AI model
-              -- System prompt includes KB overview for broader context
-              -- System prompt enforces strict citation rules
-        |
-        v
- 4. VERIFY  -- Scan for warning phrases ("based on my knowledge...")
-             -- Check that cited claims overlap with source text
-             -- Ask the AI to audit its own answer against the sources
-             -- If errors found: correct and re-verify (up to 3 times)
-             -- If still failing: refuse to answer
-        |
-        v
- 5. DISPLAY -- Show the verified answer with numbered references
+  knowledge_base/                     chroma_db/         sql_db/
+  ┌──────────────┐   python ingest.py  ┌──────────┐    ┌──────────┐
+  │ PDFs, CSVs,  │ ──────────────────> │ Vector   │ +  │ SQLite   │
+  │ codebooks... │     (Step 0)        │ Database │    │ Database │
+  └──────────────┘                     └────┬─────┘    └────┬─────┘
+                                            │               │
+                                            v               v
+  You ask a question ──> [UNDERSTAND] ──> [RETRIEVE] ──> [GENERATE] ──> [VERIFY] ──> Answer
+                          (Step 1)        (Step 2)       (Step 3)      (Step 4)    (Step 5)
 ```
 
-**Key design principles:**
+### Step 0: Ingestion — Building the Knowledge Base
 
-- **Your documents always come first.** Local sources (both vector search results and SQL query results) are the primary authority. Web sources (if enabled) are supplementary and never override your documents.
-- **No sources = no answer.** If the chatbot cannot find relevant passages in your documents or the web, it will say so rather than make something up.
-- **Smart query routing.** The chatbot automatically decides how to search: conceptual questions go to vector search, data lookups go to SQL, and mixed questions use both. If one path returns nothing, it falls back to the other.
-- **Smart query understanding.** Before searching, the chatbot reformulates your question to improve retrieval accuracy -- expanding abbreviations, resolving references from prior conversation, and adding relevant keywords. It shows you what it searched for, so you can see how your question was interpreted. After clarification, it produces a clear, well-formed question for the response AI so nothing is lost in translation.
-- **Self-aware.** The chatbot knows what's in its knowledge base. Ask "What data do you have?" and it will tell you, instead of refusing because it can't find a matching chunk.
-- **Every claim gets a citation.** The answer format uses numbered endnotes (`[1]`, `[2]`, etc.) with a full reference list at the bottom.
-- **Direct quotes are marked.** When the chatbot uses three or more consecutive words from a source, they appear in quotation marks.
+Before you can ask questions, you run `python ingest.py` to build the knowledge base. Here is what happens:
 
----
+| Phase | What happens | Example |
+|-------|-------------|---------|
+| **File reading** | Each file is read using a format-specific reader | `Chenoweth_Stephan_2011.pdf` → text from each page; `navco_2.0_data.csv` → rows with headers |
+| **Chunking** | Long documents are split into overlapping chunks (~1000 characters each) | The 200-page PDF becomes 47 searchable chunks |
+| **Vector embedding** | Each chunk is converted to a numerical vector and stored in ChromaDB | Enables "find passages similar to my question" |
+| **SQL loading** | Tabular files are loaded into SQLite with type detection and null handling | `navco_2.0_data.csv` → table with 392 rows, 18 columns, correct numeric types |
+| **Schema enrichment** | Codebooks are detected; LLM generates column descriptions | `success` → "Campaign outcome — 1 = success, 2 = partial, 3 = failure" |
+| **KB meta overview** | An LLM-generated summary of everything in the knowledge base | "The knowledge base contains the NAVCO 2.0 dataset (392 campaigns, 1945–2014) with codebook and two publications by Chenoweth & Stephan..." |
 
-## SQL Layer: Structured Data Queries
+The meta overview is stored as a special chunk in the vector database AND injected into the system prompt, so the chatbot always knows what it has access to.
 
-When you ingest tabular files (CSV, Excel, Stata, SPSS, R data), they are loaded into a local SQLite database alongside the vector database. This enables questions that vector search cannot handle:
+### Step 1: Query Understanding
 
-| Question type | Example | Route |
-|---------------|---------|-------|
-| Specific data lookup | "What are the PTS scores for China along the years?" | SQL |
-| Aggregation / counting | "How many countries are in the dataset?" | SQL |
-| Data comparison | "Compare GDP of China and India in 2020" | SQL |
-| Conceptual / definitional | "What does PTS measure?" | Vector |
-| Mixed (concept + data) | "Explain the PTS methodology and show China's scores" | Both |
+Before searching, the chatbot uses the LLM to understand and optimize your question.
 
-**How it works:**
+**What the QU layer does:**
 
-1. During ingestion, the chatbot reads the table structure (column names, types, row counts) and saves a schema registry with column statistics (unique value counts, min/max ranges for numeric columns, sample values)
-2. If codebook files are found near the dataset, the chatbot uses them to generate human-readable column descriptions (e.g., "PTS_A: Political Terror Scale score from Amnesty International reports, range 1-5")
-3. When you ask a question, the AI sees the available table schemas (with descriptions, statistics, and samples) and decides whether to use SQL, vector search, or both
-4. For SQL queries, the AI generates a SQLite SELECT statement, which is validated and executed against a read-only database connection
-5. SQL results are formatted as context and fed into the same verification pipeline as vector search results
+| Capability | Example |
+|------------|---------|
+| **Reformulation** | "Why did it work?" → `"why do nonviolent campaigns succeed mechanisms participation"` (expands vague query into search-optimized keywords) |
+| **Pronoun resolution** | After discussing NAVCO, "How many are in the dataset?" → `"how many campaigns are in the NAVCO 2.0 dataset"` (resolves "it" from conversation history) |
+| **Clarification** | "Show me the data" → *"Do you mean the NAVCO 2.0 campaign data (navco_2.0_data.csv) or the codebook (NAVCO2_codebook_2013.pdf)?"* (asks when genuinely ambiguous, using KB overview to offer specific options) |
+| **SQL routing** | "How many campaigns succeeded after 2000?" → routes to SQL with query `SELECT COUNT(*) FROM navco__navco_2_0_data_csv WHERE success IN (1,2) AND year > 2000` |
+| **Mixed routing** | "Explain what success means in NAVCO and count successful campaigns" → routes to BOTH vector (for the definition) and SQL (for the count) |
 
-**Safety:** SQL injection is prevented by three layers: (1) queries must be a single SELECT statement with no semicolons, (2) dangerous keywords (INSERT, DELETE, DROP, ALTER, CREATE, ATTACH, etc.) are blocklisted, and (3) the SQLite connection is opened in read-only mode.
+The QU layer produces two outputs:
+- **`search_query`**: keyword-optimized for retrieval (sent to the vector database / SQL engine)
+- **`display_query`**: a clear, well-formed question (sent to the response LLM)
 
-**Data integrity:** Leading zeros in identifier columns (zip codes like "01234", FIPS codes like "007") are automatically detected and preserved as text rather than being converted to integers.
+If the reformulated query differs from your original, you will see: `Searching for: "nonviolent campaigns success mechanisms participation"`.
 
-**Graceful degradation:** If no tabular files are ingested, the SQL layer is silently skipped and the chatbot works identically to a vector-only system. If a SQL query fails or returns no results, the chatbot falls back to vector search. If the AI wraps SQL in markdown code fences, they are automatically stripped before execution.
+### Step 2: Retrieval
 
----
+Based on the route chosen by Step 1, the chatbot searches for relevant information:
 
-## KB Self-Awareness: The Meta Overview
+| Route | When used | How it works | Example |
+|-------|-----------|-------------|---------|
+| **Vector** | Conceptual questions, definitions, explanations | Finds the chunks most similar to your query in the vector database; keeps only chunks below a distance threshold (default 0.55) | "Why do nonviolent campaigns succeed?" → retrieves chunks from Chenoweth_Stephan_2011.pdf about participation and defection mechanisms |
+| **SQL** | Data lookups, counts, filtering, aggregation | Executes a validated SELECT query against the SQLite database | "How many campaigns in NAVCO are coded as nonviolent?" → `SELECT COUNT(*) FROM ... WHERE camp_type = 1` |
+| **Both** | Mixed questions needing both context and data | Runs vector search AND SQL, merges results | "Explain success coding and show success rates by decade" → codebook chunks + SQL aggregation |
+| **Fallback** | When the chosen route returns nothing | Automatically tries the other route | SQL returns no rows → falls back to vector search |
+| **Web** | When enabled, supplements local results | Queries Semantic Scholar for academic papers | Adds peer-reviewed papers when local sources are thin |
 
-A common problem with RAG chatbots is that they don't know what they know. If you ask "What data do you have?" or "What datasets are available?", a typical vector-search chatbot returns nothing -- because abstract meta-questions don't match any specific document chunk.
+**Source priority:** Local documents = SQL results > Web sources. Web results never override your local documents.
 
-This chatbot solves that problem with a **KB meta overview** -- an LLM-generated high-level summary of the entire knowledge base that is produced automatically during ingestion. The overview describes what documents and tables exist, what topics they cover, and how they connect.
+### Step 3: Response Generation
 
-**How the meta overview is used:**
+The retrieved passages are assembled into a context block and sent to the LLM along with:
 
-1. **Answering meta-questions.** The overview is stored as a special chunk in the vector database, so questions like "What is in the knowledge base?" find it through normal vector search and get a real answer instead of a refusal.
-2. **Smarter query routing.** The query understanding layer sees the full overview, so it knows what's available when deciding how to reformulate and route your question (vector, SQL, or both).
-3. **Better-contextualized answers.** When generating any response, the AI has the "big picture" of the knowledge base alongside the specific retrieved passages. This helps it say things like "the PTS dataset, one of three datasets in the knowledge base, shows..." instead of answering in isolation.
+- A **system prompt** that enforces strict citation rules ("NEVER use your training data. ONLY use the provided sources.")
+- The **KB meta overview** so the LLM knows the broader context of the knowledge base
+- The **display query** (the clear, well-formed version of your question)
 
-**Graceful degradation:** If the LLM is unavailable during ingestion, the overview falls back to a structured file listing (deterministic, no LLM needed). If the overview file is missing entirely (e.g., first run before ingestion), the chatbot works identically to a system without the feature -- no errors, no impact. The overview regenerates automatically every time you run `python ingest.py`.
+The system prompt tells the LLM to:
+- Cite every factual claim with a numbered endnote `[1]`, `[2]`, etc.
+- Put direct quotes (3+ consecutive words from a source) in quotation marks
+- End with a References section listing all cited sources with file names, page numbers, or URLs
+- Refuse to answer if the provided sources do not contain relevant information
 
----
+A **soft token cap** limits response length proportionally to context size -- less context means shorter answers, reducing the surface area for hallucination.
 
-## Anti-Hallucination: How the Chatbot Stays Honest
+### Step 4: Verification (6-Layer Anti-Hallucination Stack)
 
-Large language models (like GPT-4 or Claude) sometimes generate plausible-sounding information that isn't true -- a problem researchers call "hallucination." This chatbot uses a **6-layer verification stack** to minimize that risk:
+This is the core differentiator. Before showing you the answer, it passes through six verification layers:
 
-| Layer | Name | What it does | Cost |
-|-------|------|-------------|------|
-| **0** | No-source gate | If no relevant documents are found, the AI is **never called**. A fixed refusal message is returned instead. | Free |
-| **1** | System prompt | The AI receives strict instructions: "NEVER use your training data. ONLY use the provided sources. If you can't find the answer, REFUSE." | Free |
-| **2** | Response length cap | Short context = short answer. The AI is given a smaller token budget when few sources are found, reducing the opportunity to hallucinate. | Free |
-| **3** | Self-verification loop | After generating an answer, a second AI call audits the response against the sources using a 9-point checklist. If errors are found, the answer is corrected and re-verified (up to 3 times). If it still fails, the chatbot refuses to answer. | 1--3 extra AI calls |
-| **4** | Term-overlap check | For every cited claim, the system checks what fraction of words actually appear in the source text. Claims with less than 40% overlap are flagged. | Free (no AI call) |
-| **5** | Warning-phrase scanner | Scans for phrases like "based on my knowledge" or "it is well known" that suggest the AI is drawing on its training data instead of your documents. | Free (no AI call) |
+```
+Layer 0: No-source gate
+   │  If retrieval found nothing, the LLM is NEVER called.
+   │  A fixed refusal message is returned. (Free)
+   v
+Layer 1: System prompt guardrails
+   │  Strict instructions baked into every LLM call. (Free)
+   v
+Layer 2: Response length cap
+   │  Short context → short answer → less room to hallucinate. (Free)
+   v
+Layer 3: LLM self-verification loop (up to 3 iterations)
+   │  A second LLM call audits the response against the sources
+   │  using a 9-point checklist. If errors are found, the response
+   │  is corrected and re-verified. If it still fails after 3
+   │  attempts, the chatbot refuses to answer. (1-3 extra LLM calls)
+   v
+Layer 4: Term-overlap check
+   │  For every cited claim, checks what fraction of words actually
+   │  appear in the source text. Flags claims with < 40% overlap
+   │  as potentially ungrounded. (Free, no LLM call)
+   v
+Layer 5: Warning-phrase scanner
+      Scans for phrases like "based on my knowledge" or "it is well
+      known" that suggest the LLM is using training data instead of
+      your documents. (Free, no LLM call)
+```
 
-**Layers 4 and 5 produce advisory flags** -- they don't automatically reject the answer. Instead, their flags are passed to Layer 3 (the self-verification loop) so the AI can pay extra attention to those sections.
+**Layers 4 and 5 produce advisory flags** -- they don't automatically reject the answer. Instead, their flags are passed to Layer 3 (the self-verification loop) so the LLM can pay extra attention to those sections.
 
-**What "strict mode" means:** When `strict_mode: true` (the default), the chatbot will refuse to answer if verification fails after all correction attempts. When `strict_mode: false`, it will show the answer with a warning instead.
+**Strict mode** (default): The chatbot refuses to answer if verification fails after all correction attempts. **Non-strict mode**: Shows the answer with a warning instead.
 
-**Provider-specific handling:** If an AI provider blocks a response due to safety filters (e.g., Google Gemini's content filtering), the chatbot detects this immediately and returns a clear explanation instead of entering the verification loop with a blocked response.
+### Step 5: Display
+
+The verified answer is displayed with:
+- The response text with numbered citations
+- A **status indicator** (Verified / Verification failed / Refused)
+- The **iteration count** (how many verification rounds it took)
+- A **source summary** (e.g., "Sources: 3 local, 12 SQL rows -- type /sources for details")
+
+**Example session with the NAVCO knowledge base:**
+
+```
+You> What datasets do you have?
+  [Verified] (1 iteration)
+  The knowledge base contains the NAVCO 2.0 dataset with 392 campaigns
+  from 1945 to 2014, its codebook, and two publications by Chenoweth
+  and Stephan. [1]
+
+You> What does the success variable mean?
+  Searching for: "NAVCO 2.0 success variable coding definition"
+  [Verified] (1 iteration)
+  The success variable in NAVCO 2.0 codes campaign outcomes on a
+  three-point scale: 1 = success, 2 = partial success, 3 = failure [1].
+  A campaign is coded as successful if it achieved its stated maximalist
+  goals within a reasonable time frame of the campaign's peak [1][2].
+
+You> How many of each?
+  Searching for: "count campaigns by success outcome NAVCO 2.0"
+  Using SQL query for structured data
+  [Verified] (1 iteration)
+  Of the 392 campaigns in the NAVCO 2.0 dataset: 117 succeeded (30%),
+  60 achieved partial success (15%), and 215 failed (55%) [1].
+
+You> What about nonviolent ones specifically?
+  Searching for: "nonviolent campaigns success count NAVCO 2.0 viol_camp = 0"
+  Using SQL query for structured data
+  [Verified] (1 iteration)
+  Among the 108 nonviolent campaigns (viol_camp = 0): 57 succeeded
+  (53%), 18 achieved partial success (17%), and 33 failed (31%) [1].
+  This 53% success rate is consistent with the finding in Chenoweth and
+  Stephan (2011) that "nonviolent resistance campaigns were nearly
+  twice as likely to achieve full or partial success" [2].
+```
+
+Notice how the chatbot:
+- Resolves "How many of each?" using conversation history (knows you mean the success variable)
+- Resolves "What about nonviolent ones?" as a follow-up to the previous count
+- Routes data questions to SQL automatically
+- Cites both the SQL query results and the PDF publication
+- Shows you the reformulated search query for transparency
 
 ---
 
@@ -409,8 +493,8 @@ Generated by the setup wizard. You can also edit it by hand.
 
 ```yaml
 chatbot:
-  name: "My Research Assistant"    # Display name
-  domain: "political science"      # Topic description (used in system prompt)
+  name: "NAVCO Research Assistant"   # Display name
+  domain: "nonviolent and violent campaigns"  # Topic (used in system prompt)
 
 llm:
   provider: "openai"               # openai | anthropic | gemini
@@ -445,12 +529,12 @@ verification:
 
 sql:
   enabled: true                    # Set to false to disable SQL layer entirely
-  max_rows: 200                    # Max rows returned per SQL query (prevents context overflow)
+  max_rows: 200                    # Max rows returned per SQL query
 
 paths:
   knowledge_base: "knowledge_base" # Where your documents live
   vector_db: "chroma_db"           # Where the vector database is stored
-  sql_db: "sql_db"                 # Where the SQLite database and schema registry are stored
+  sql_db: "sql_db"                 # Where the SQLite database and schema registry live
 ```
 
 ### .env
@@ -458,16 +542,14 @@ paths:
 Your API key. Never share this file or commit it to GitHub.
 
 ```
-OPENAI_API_KEY=sk-...
+OPENAI_API_KEY="sk-..."
 ```
 
 You can also set API keys as environment variables in your terminal instead of using the `.env` file.
 
 ### Choosing a Model
 
-Better models are more expensive!
-
-You can switch models at any time using `/model` in the CLI or the sidebar dropdown in the web UI. No need to re-run the setup wizard.
+Better models produce more accurate answers but cost more per query. You can switch models at any time using `/model` in the CLI or the sidebar dropdown in the web UI -- no need to re-run the setup wizard.
 
 ---
 
@@ -491,30 +573,30 @@ The container mounts your `knowledge_base/`, `chroma_db/`, `sql_db/`, `config.ya
 
 ### Advantages
 
-- **No hallucination by design.** The 6-layer verification stack catches unsupported claims before they reach you. If the chatbot can't verify an answer, it refuses rather than guessing. This is critical for research where accuracy matters.
-- **Full citation trail.** Every factual claim is tied to a specific source with page numbers or URLs. You can trace any claim back to the original document and verify it yourself.
+- **No hallucination by design.** The 6-layer verification stack catches unsupported claims before they reach you. If the chatbot can't verify an answer, it refuses rather than guessing.
+- **Full citation trail.** Every factual claim is tied to a specific source with page numbers or URLs. You can trace any claim back to the original document.
 - **Works with your own documents.** Unlike general-purpose chatbots, this one answers from *your* knowledge base. Your PDFs, datasets, and codebooks are the primary authority.
-- **Knows what it knows.** The chatbot builds a meta-overview of its entire knowledge base during ingestion. It can answer meta-questions like "What datasets do you have?" and contextualizes every answer within the broader picture. This is unlike typical RAG systems that are blind to their own contents.
-- **Structured data queries.** Ask questions like "PTS scores for China along the years" or "how many countries are in the dataset?" and the chatbot queries your datasets directly using SQL -- no more imprecise vector search over tabular data. Schema enrichment with automatic codebook detection means the AI understands what each column means.
-- **Smart query understanding.** The chatbot reformulates your questions for better search, resolves pronouns and follow-up references from conversation history, asks clarification when needed, and routes each query to the best search strategy (vector, SQL, or both). It produces optimized queries for both retrieval and response generation.
-- **Reads 15 file formats.** Handles the formats social scientists actually use: Stata `.dta`, SPSS `.sav`, R `.rds`/`.rda`, Excel, CSV, PDF, Word, and plain text. No file conversion needed.
-- **No data leaves your computer (except to the AI provider).** Your documents are stored locally in a vector database and SQLite database on your own machine. They are not uploaded to any cloud storage. Only the relevant text chunks or query results are sent to the AI provider as part of each query.
-- **Swappable AI providers.** Switch between OpenAI, Anthropic, and Google Gemini without changing your documents or setup. Use whatever provider your institution has access to.
-- **Web search augmentation.** Optionally supplement your local documents with academic papers from Semantic Scholar. Local sources always take priority.
-- **Two interfaces.** Use the terminal for quick queries or the web UI for a more visual experience. Both share the same backend.
-- **Open source and extensible.** The registry pattern makes it straightforward to add new file formats, AI providers, or search backends by writing a single file and adding one line to the registry.
+- **Knows what it knows.** The chatbot builds a meta-overview during ingestion. Ask "What datasets do you have?" and it can answer, instead of refusing because no chunk matches.
+- **Structured data queries.** Ask "how many nonviolent campaigns succeeded after 2000?" and the chatbot queries your dataset directly using SQL. Schema enrichment with automatic codebook detection means the AI understands what each column means.
+- **Smart query understanding.** The chatbot reformulates questions for better search, resolves pronouns from conversation history, asks clarification when needed, and routes each query to the best search strategy.
+- **Reads 15 file formats.** Handles the formats social scientists actually use: Stata `.dta`, SPSS `.sav`, R `.rds`/`.rda`, Excel, CSV, PDF, Word, and plain text.
+- **No data leaves your computer (except to the AI provider).** Documents are stored locally. Only relevant text chunks are sent to the AI provider as part of each query.
+- **Swappable AI providers.** Switch between OpenAI, Anthropic, and Google Gemini without changing your documents or setup.
+- **Web search augmentation.** Optionally supplement local documents with academic papers from Semantic Scholar. Local sources always take priority.
+- **Two interfaces.** Terminal for quick queries; web UI for a more visual experience. Both share the same backend.
+- **Open source and extensible.** The registry pattern makes it easy to add new file formats, AI providers, or search backends.
 
 ### Limitations
 
-- **Requires an API key (costs money).** The chatbot relies on commercial AI providers. Each question costs a small amount (fractions of a cent to a few cents), and the verification loop multiplies this by 2--4x per question.
-- **Not a replacement for reading your sources.** The chatbot summarizes and cites, but it cannot replace careful reading of original documents. Always verify critical findings by checking the cited pages yourself.
-- **Quality depends on your documents.** The chatbot can only work with what you give it. If your knowledge base is incomplete, the answers will be incomplete. If a PDF has poor text extraction (e.g., scanned images without OCR), those pages will be missing.
-- **Scanned PDFs are not supported.** The PDF reader extracts text from digitally-created PDFs. If your PDFs are scanned images (common with older journal articles), you will need to run OCR software (like Adobe Acrobat or the free tool `ocrmypdf`) on them first.
-- **Large datasets are slow to ingest.** For datasets with 100,000+ rows, the ingestion step will be slow. The SQL layer handles structured queries efficiently once ingested, but the initial loading takes time. Consider using a representative sample for very large files.
-- **Verification is not perfect.** The self-verification loop significantly reduces hallucination but cannot eliminate it entirely. The term-overlap check (Layer 4) is a simple heuristic, not a semantic understanding check. Treat all AI-generated answers as drafts that require human review.
-- **Single-user, single-session.** The chatbot runs locally on one computer. Chat history in the web UI is lost when you close the browser tab. There is no user authentication or multi-user support.
-- **Internet required for AI calls.** Even though your documents are stored locally, every question requires an internet connection to reach the AI provider's API. The web search feature also requires internet access.
-- **No GPU required.** The local embedding model (ChromaDB's default) runs on CPU. This is free but produces lower-quality embeddings than OpenAI's embedding models. You can upgrade to OpenAI embeddings in `config.yaml` if you want better retrieval accuracy (at additional cost).
+- **Requires an API key (costs money).** Each question costs a small amount, and the verification loop multiplies this by 2--4x per question.
+- **Not a replacement for reading your sources.** The chatbot summarizes and cites, but always verify critical findings by checking the cited pages yourself.
+- **Quality depends on your documents.** If your knowledge base is incomplete, the answers will be incomplete. If a PDF has poor text extraction, those pages will be missing.
+- **Scanned PDFs are not supported.** The PDF reader extracts text from digitally-created PDFs. For scanned images, run OCR software (like `ocrmypdf`) on them first.
+- **Large datasets are slow to ingest.** For 100,000+ row datasets, consider using a representative sample.
+- **Verification is not perfect.** The self-verification loop significantly reduces hallucination but cannot eliminate it entirely. Treat all AI-generated answers as drafts requiring human review.
+- **Single-user, single-session.** Runs locally on one computer. No user authentication or multi-user support.
+- **Internet required for AI calls.** Even though documents are stored locally, every question requires an internet connection to the AI provider.
+- **No GPU required.** The local embedding model runs on CPU (free but lower quality). Upgrade to OpenAI embeddings in `config.yaml` for better retrieval accuracy at additional cost.
 
 ---
 
@@ -522,19 +604,19 @@ The container mounts your `knowledge_base/`, `chroma_db/`, `sql_db/`, `config.ya
 
 ### "No supported files found"
 
-Make sure your files are in the `knowledge_base/` folder (not a subfolder of a subfolder with no supported files). Check that your file extensions match one of the [supported formats](#supported-file-formats).
+Make sure your files are in the `knowledge_base/` folder and that file extensions match one of the [supported formats](#supported-file-formats).
 
 ### "API key not set"
 
 Run `python setup.py` again, or manually create a `.env` file in the project root:
 
 ```
-OPENAI_API_KEY=sk-your-key-here
+OPENAI_API_KEY="sk-your-key-here"
 ```
 
-### "Failed to load config" or configuration error at startup
+### "Failed to load config"
 
-Run `python setup.py` to generate `config.yaml`, or check that the file exists in the project root. The web interface will show a clear error message if `config.yaml` is missing.
+Run `python setup.py` to generate `config.yaml`, or check that the file exists in the project root.
 
 ### The chatbot keeps refusing to answer
 
@@ -545,14 +627,11 @@ This means it cannot find relevant passages in your documents. Try:
 
 ### PyPDF2 deprecation warning
 
-You may see a warning about PyPDF2 being deprecated. This is cosmetic and does not affect functionality. A future update will replace it with the `pypdf` library.
+You may see a warning about PyPDF2 being deprecated. This is cosmetic and does not affect functionality.
 
 ### Ingestion is very slow
 
-Large datasets (`.dta`, `.sav`, `.csv` with many rows) take time to process. Consider:
-- Using a codebook or data dictionary instead of the full dataset
-- Taking a random sample of rows
-- Splitting very large files into smaller ones
+Large datasets take time to process. Consider using a codebook instead of the full dataset, taking a random sample of rows, or splitting very large files.
 
 ---
 
