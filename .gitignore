@@ -10,3 +10,6 @@ build/
 .pytest_cache/
 knowledge_base/*
 !knowledge_base/.gitkeep
+CLAUDE.md
+docs/
+tests/
