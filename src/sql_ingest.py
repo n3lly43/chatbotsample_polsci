@@ -46,14 +46,24 @@ def _infer_column_type(values: list) -> str:
     # Try INTEGER
     try:
         for v in non_empty:
-            int(str(v).strip())
+            s = str(v).strip()
+            # Preserve leading zeros as TEXT (zip codes, FIPS codes, etc.)
+            digits = s.lstrip("+-")
+            if digits.startswith("0") and len(digits) > 1:
+                raise ValueError("leading zero")
+            int(s)
         return "INTEGER"
     except (ValueError, TypeError):
         pass
     # Try REAL
     try:
         for v in non_empty:
-            f = float(str(v).strip())
+            s = str(v).strip()
+            # Preserve leading zeros as TEXT (zip codes, FIPS codes, etc.)
+            digits = s.lstrip("+-")
+            if digits and digits[0] == "0" and len(digits) > 1 and "." not in digits:
+                raise ValueError("leading zero")
+            f = float(s)
             # Reject inf/nan — these are not valid REAL data
             if not (-1e308 < f < 1e308):
                 raise ValueError("non-finite float")
@@ -478,6 +488,7 @@ def _ingest_tables(
 ) -> dict:
     """Load tabular files into SQLite tables. Returns the schema registry."""
     schema_registry = {}
+    used_table_names: set[str] = set()
 
     for file_path, dataset_name in tabular_files:
         ext = file_path.suffix.lower()
@@ -496,6 +507,16 @@ def _ingest_tables(
 
         for sheet_or_name, headers, rows in tables:
             table_name = _sanitize_table_name(dataset_name, file_path.stem, ext, sheet_or_name)
+
+            # Detect table name collisions and append suffix to avoid silent overwrites
+            if table_name in used_table_names:
+                suffix = 2
+                while f"{table_name}_{suffix}" in used_table_names:
+                    suffix += 1
+                print(f"  Warning: table name collision for '{table_name}' "
+                      f"(from {file_path.name}), renaming to '{table_name}_{suffix}'")
+                table_name = f"{table_name}_{suffix}"
+            used_table_names.add(table_name)
 
             # Infer column types, collect samples and stats
             safe_headers = [_sanitize_column_name(h) for h in headers]

@@ -17,13 +17,19 @@ def init_session():
     if "messages" not in st.session_state:
         st.session_state.messages = []
     if "cfg" not in st.session_state:
-        st.session_state.cfg = load_config()
+        try:
+            st.session_state.cfg = load_config()
+        except Exception as e:
+            st.error(f"Configuration error: {e}\n\nPlease run `python setup.py` first.")
+            st.stop()
     if "last_retrieval" not in st.session_state:
         st.session_state.last_retrieval = None
     if "pending_clarification" not in st.session_state:
         st.session_state.pending_clarification = None
     if "clarification_rounds" not in st.session_state:
         st.session_state.clarification_rounds = 0
+    if "pending_clarification_question" not in st.session_state:
+        st.session_state.pending_clarification_question = None
 
 
 # ── Sidebar ──────────────────────────────────────────────────────────────────
@@ -269,16 +275,16 @@ def render_chat():
 
 def main():
     """Orchestrate the Streamlit app."""
+    st.set_page_config(
+        page_title="ResearchBot",
+        page_icon="🔬",
+        layout="wide",
+    )
+
     init_session()
 
     cfg = st.session_state.cfg
     bot_name = cfg.get("chatbot", {}).get("name", "ResearchBot")
-
-    st.set_page_config(
-        page_title=bot_name,
-        page_icon="🔬",
-        layout="wide",
-    )
 
     st.title(bot_name)
 

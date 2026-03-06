@@ -171,15 +171,16 @@ def parse_verification_result(raw: str) -> dict:
     except (json.JSONDecodeError, TypeError):
         pass
 
-    # Regex fallback: find the first { ... } block
-    match = re.search(r"\{[\s\S]*\}", raw)
-    if match:
-        try:
-            result = json.loads(match.group())
-            if isinstance(result, dict) and "pass" in result:
-                return result
-        except (json.JSONDecodeError, TypeError):
-            pass
+    # Fallback: scan for the first valid JSON object using raw_decode
+    decoder = json.JSONDecoder()
+    for i, ch in enumerate(raw):
+        if ch == '{':
+            try:
+                result, _ = decoder.raw_decode(raw, i)
+                if isinstance(result, dict) and "pass" in result:
+                    return result
+            except json.JSONDecodeError:
+                continue
 
     # Unparseable — fail conservatively
     return {
@@ -237,6 +238,18 @@ def verify_and_respond(
     # ── Generate initial response ─────────────────────────────────────────
     response = generate(system_prompt, query, cfg, max_tokens=soft_max)
 
+    # ── Guard: detect provider-level content blocks ────────────────────────
+    if response.startswith("[") and "blocked" in response.lower():
+        return {
+            "response": (
+                "The LLM provider blocked this request due to content "
+                "safety filters. Please try rephrasing your question."
+            ),
+            "refused": True,
+            "verification_passed": None,
+            "iterations": 0,
+        }
+
     # ── Short-circuit if verification is disabled ─────────────────────────
     verification_cfg = cfg.get("verification", {})
     if not verification_cfg.get("enabled", True):
@@ -249,6 +262,15 @@ def verify_and_respond(
 
     max_iterations = verification_cfg.get("max_iterations", 3)
     strict_mode = verification_cfg.get("strict_mode", True)
+
+    # Guard: max_iterations=0 with enabled=true → skip verification
+    if max_iterations <= 0:
+        return {
+            "response": response,
+            "refused": False,
+            "verification_passed": None,
+            "iterations": 0,
+        }
 
     # ── Verification loop ─────────────────────────────────────────────────
     for iteration in range(1, max_iterations + 1):

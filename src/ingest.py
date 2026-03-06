@@ -175,17 +175,16 @@ def ingest_documents(cfg: dict = None, documents_dir: str = None) -> int:
     chunk_size = cfg.get("retrieval", {}).get("chunk_size", 1000)
     chunk_overlap = cfg.get("retrieval", {}).get("chunk_overlap", 100)
 
+    # Guard: overlap >= chunk_size would cause explosive chunk generation
+    if chunk_overlap >= chunk_size:
+        chunk_overlap = chunk_size // 5
+        print(f"Warning: chunk_overlap >= chunk_size, reducing overlap to {chunk_overlap}")
+
     collection = get_chroma_collection(cfg)
 
-    # Clear existing data
-    existing = collection.count()
-    if existing > 0:
-        print(f"Clearing {existing} existing chunks...\n")
-        all_ids = collection.get().get("ids", [])
-        if all_ids:
-            for i in range(0, len(all_ids), 5000):
-                collection.delete(ids=all_ids[i:i + 5000])
-
+    # Defer clearing until first successful chunk generation (prevents data loss
+    # if all file reads fail after clearing)
+    needs_clear = True
     total_chunks = 0
     for file_path, dataset_name in files:
         rel_path = file_path.relative_to(documents_dir)
@@ -204,6 +203,17 @@ def ingest_documents(cfg: dict = None, documents_dir: str = None) -> int:
         source_name = file_path.relative_to(Path(documents_dir)).as_posix()
         chunks = chunk_documents(pages, source_name, dataset_name, chunk_size, chunk_overlap)
         print(f"  -> {len(chunks)} chunks")
+
+        # Clear existing data only once we have new chunks to insert
+        if needs_clear and chunks:
+            existing = collection.count()
+            if existing > 0:
+                print(f"Clearing {existing} existing chunks...\n")
+                all_ids = collection.get().get("ids", [])
+                if all_ids:
+                    for ci in range(0, len(all_ids), 5000):
+                        collection.delete(ids=all_ids[ci:ci + 5000])
+            needs_clear = False
 
         batch_size = 100
         for i in range(0, len(chunks), batch_size):

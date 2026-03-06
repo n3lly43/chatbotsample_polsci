@@ -1058,13 +1058,169 @@ The working copy at `/Users/lianjie/Desktop/tool making/chatbot template` is beh
 
 ---
 
+## 2026-03-06 — Third Multi-Agent Debug Audit (4 Agents) + MEDIUM Fix Round
+
+### Process
+
+Dispatched 4 parallel agents for a focused audit (major issues only):
+
+1. **Agent 1 — Ingestion + SQL pipeline**: `src/ingest.py`, `src/sql_ingest.py`, `src/sql_retriever.py`, `src/kb_meta.py`, `src/readers/`
+2. **Agent 2 — Query + Retrieval pipeline**: `src/query_engine.py`, `src/retriever.py`, `src/prompts.py`, `src/verifier.py`, `src/llm/`
+3. **Agent 3 — App layer + Config**: `app_cli.py`, `app_web.py`, `setup.py`, `src/config_loader.py`, Docker, `.gitignore`
+4. **Agent 4 — Test suite**: All 17 test files, coverage gaps, redundancy check
+
+### Findings Summary
+
+- **3 HIGH** severity bugs found and fixed (2 in prior pass, 1 in .gitignore)
+- **9 MEDIUM** severity bugs found and fixed
+- **Test coverage gaps identified**: `retrieve()`, `verify_and_respond()` loop (Layers 3-5), `compute_similarity_flags()` have zero direct tests
+
+### HIGH Fixes (done in earlier pass this session)
+
+| File | Fix |
+|------|-----|
+| `src/prompts.py:234` | Escape `sql_schema_summary` before inner `.format()` — prevents `KeyError` crash on curly braces in schema text |
+| `src/sql_ingest.py:498` | Detect table name collisions via `used_table_names` set, append `_2`/`_3` suffix with warning |
+
+### MEDIUM Fixes (10 changes across 10 files)
+
+| # | File | Fix |
+|---|------|-----|
+| 1 | `src/readers/csv_tab.py` | BOM handling: `utf-8` → `utf-8-sig` (consistent with SQL ingest path) |
+| 2 | `src/sql_retriever.py` | Added `max_rows` param to `format_sql_results_as_context` — appends truncation notice when results are capped |
+| 3 | `src/retriever.py` | Passes `max_rows` through to SQL formatter; changed KB meta fallback distance `0.0` → `1.0` (truthful sentinel) |
+| 4 | `src/kb_meta.py` | Merged two redundant `collection.get()` calls into single `_collect_all_data()` with `_cache` parameter |
+| 5 | `requirements.txt` | Added `onnxruntime>=1.14.0` + `tokenizers>=0.13.0` for default local embeddings |
+| 6 | `app_web.py` | Moved `st.set_page_config()` before `init_session()`; initialized `pending_clarification_question` |
+| 7 | `src/llm/gemini.py` | Safety-filtered responses return descriptive `[Gemini blocked: ...]` instead of silent `""` |
+| 8 | `src/verifier.py` + `src/query_engine.py` | Replaced greedy `\{[\s\S]*\}` regex with `json.JSONDecoder().raw_decode()` for reliable JSON extraction |
+| 9 | `.gitignore` | Removed `CLAUDE.md`, `docs/`, `tests/` from gitignore — these should be version-controlled |
+| 10 | `setup.py` | `generate_env()` now merges with existing `.env` keys instead of silently overwriting |
+
+### Repo Sync
+
+Synced `/tmp/chatbotsample_api` (authoritative, up-to-date) → Desktop copy at `/Users/lianjie/Desktop/tool making/chatbot template`. Both directories are now identical (source files). Desktop copy is the primary working directory going forward.
+
+### Test Suite
+
+**155/155 tests passing** (3.06s) — includes 2 new regression tests from HIGH fixes (`test_qu_prompt_schema_with_curly_braces`, `test_sql_table_name_collision`).
+
+---
+
+## 2026-03-06 — Fourth Multi-Agent Audit (4 Agents) + HIGH Fix Round
+
+### Process
+
+Dispatched 4 parallel agents for a final thorough workflow-tracing audit:
+
+1. **Agent 1 — Ingestion + SQL workflow**: Traced full ingestion pipeline end-to-end (entry point → readers → chunking → ChromaDB → SQL → KB meta)
+2. **Agent 2 — Query + Retrieval workflow**: Traced full query pipeline (QU → prompts → retrieval → SQL retriever → search backends)
+3. **Agent 3 — Verification + Response workflow**: Traced 6-layer verification stack + both app frontends end-to-end
+4. **Agent 4 — Tests + Cross-cutting concerns**: Audited test suite coverage, config consistency, import chains, path handling, error propagation
+
+### Findings Summary
+
+- **4 HIGH** severity bugs found and fixed
+- **6 MEDIUM** severity bugs identified (not fixed this round)
+- **3 HIGH** test coverage gaps identified
+- **0 config mismatches** (all 16 config field paths verified consistent)
+- **0 circular imports** (import graph clean)
+
+### HIGH Fixes Applied
+
+| # | File(s) | Bug | Fix |
+|---|---------|-----|-----|
+| **H1** | `src/prompts.py`, `src/kb_meta.py` | **`_escape_braces()` garbles text with curly braces** — Python's `str.format()` does NOT process `{`/`}` in VALUES, only in the TEMPLATE string. All `_escape_braces()` calls on values were doubling braces in the output. JSON data `{"key": "value"}` became `{{"key": "value"}}` in LLM prompts. Schema text `{N/A}` became `{{{{N/A}}}}` (quadruple-braced). | Removed ALL `_escape_braces()` calls from all 4 prompt builder functions (`build_prompt`, `build_verification_prompt`, `build_query_understanding_prompt`, `generate_kb_overview_with_llm`). Removed the redundant `safe_schema` pre-escaping. Deleted the `_escape_braces()` function and its cross-module import. Template-level `{{`/`}}` (for JSON examples in prompts) remain correct and unchanged. |
+| **H2** | `src/ingest.py:178` | **Explosive chunk generation when `chunk_overlap >= chunk_size`** — `step = max(1, chunk_size - overlap)` = 1, producing a chunk at every character position. A 5000-char page would generate ~5000 chunks. | Added validation after reading config: `if chunk_overlap >= chunk_size: chunk_overlap = chunk_size // 5` with a printed warning. |
+| **H3** | `src/verifier.py:241-251` | **Gemini safety-blocked response enters verification loop** — `"[Gemini blocked: ...]"` treated as normal response, fails verification 3 times, then refuses with a confusing message. | Added guard after initial `generate()` call: if response starts with `"["` and contains `"blocked"`, return an immediate clear refusal without entering the verification loop. |
+| **H4** | `app_web.py:19-23` | **Web app crashes on missing config.yaml** — `load_config()` raises `FileNotFoundError` with no try/except, showing a raw traceback to Streamlit users. | Wrapped `load_config()` in try/except with `st.error()` + `st.stop()`. |
+
+### Technical Detail: Why `_escape_braces()` Was Wrong
+
+The previous code (added 2026-03-05) escaped curly braces in all values passed to `str.format()`. This was based on a misunderstanding: `str.format()` processes `{`/`}` patterns only in the **template string**, never in replacement **values**. Values are inserted as-is.
+
+```python
+# Template: "Hello {name}" — {name} is a placeholder in the TEMPLATE
+# Value: "{code}" — braces in the VALUE are literal, never processed
+>>> "Hello {name}".format(name="{code}")
+'Hello {code}'  # ← braces preserved, no KeyError
+```
+
+The escaping was unnecessary and caused double-bracing: `{N/A}` → `{{N/A}}` (in `build_prompt`), or quadruple-bracing: `{N/A}` → `{{{{N/A}}}}` (in `build_query_understanding_prompt` where schema text went through TWO layers of escaping). The existing regression test `test_qu_prompt_schema_with_curly_braces` had a weak assertion (`"{N/A}" in prompt`) that passed because `{N/A}` is a substring of `{{{{N/A}}}}`.
+
+### Tests Added/Updated
+
+| Test | File | Purpose |
+|------|------|---------|
+| `test_build_prompt_with_curly_braces_in_context` | `tests/test_prompts.py` | **Strengthened**: now asserts single braces AND asserts no double-bracing |
+| `test_build_verification_prompt_with_curly_braces` | `tests/test_prompts.py` | **Strengthened**: added `assert "{{result}}" not in prompt` |
+| `test_qu_prompt_schema_with_curly_braces` | `tests/test_prompts.py` | **Strengthened**: added `assert "{{N/A}}" not in prompt` and `assert "{{{{N/A}}}}" not in prompt` |
+| `test_build_prompt_kb_overview_with_braces` | `tests/test_kb_meta.py` | **Strengthened**: added `assert "{{variable_name}}" not in prompt` |
+| `test_qu_prompt_kb_overview_with_braces` | `tests/test_kb_meta.py` | **Strengthened**: added `assert "{{id}}" not in prompt` |
+| `test_ingest_clamps_overlap_when_gte_chunk_size` | `tests/test_ingest.py` | **New**: verifies overlap clamping + warning message + no explosive chunks |
+| `test_gemini_blocked_response_returns_refusal` | `tests/test_verifier.py` | **New**: mocks blocked response, verifies immediate refusal without verification loop |
+
+### MEDIUM Bugs Identified (Not Fixed This Round)
+
+| # | File | Bug |
+|---|------|-----|
+| M1 | `src/sql_ingest.py:47-50` | Leading zeros dropped from numeric-looking identifiers (zip codes, FIPS codes) |
+| M2 | `src/ingest.py:180-187` | Collection cleared before ingestion succeeds (data loss risk on re-ingestion failure) |
+| M3 | `src/sql_retriever.py:27` | SQL wrapped in markdown fences fails validation |
+| M4 | `src/verifier.py:255` | `max_iterations=0` causes refusal without verification attempt |
+| M5 | `app_cli.py:299-318` | CLI clarification exchanges not added to conversation history |
+| M6 | `src/retriever.py:88` | Hardcoded `knowledge_base/` prefix in context formatting |
+
+### Test Coverage Gaps Identified (Not Addressed This Round)
+
+| # | What's Untested |
+|---|-----------------|
+| T1 | `compute_similarity_flags()` (Layer 4) — zero tests |
+| T2 | `verify_and_respond()` verification loop, correction loop, strict/non-strict modes |
+| T3 | `retrieve()` SQL/vector/both routing and fallback logic |
+
+### Repo Sync
+
+Both directories synced and verified:
+- Primary: `/Users/lianjie/Desktop/tool making/chatbot template`
+- Mirror: `/tmp/chatbotsample_api`
+
+### Test Suite
+
+**157/157 tests passing** (3.55s) — 155 existing + 2 new regression tests.
+
+### MEDIUM Bug Fixes (6 bugs)
+
+Applied all 6 MEDIUM severity bugs identified by the audit agents:
+
+| ID | File | Bug | Fix |
+|----|------|-----|-----|
+| M1 | `src/sql_ingest.py:47–65` | Leading zeros dropped from identifiers (zip codes "01234" → INTEGER 1234) | Added leading-zero check in both INTEGER and REAL type inference; values like "007", "01234" now stay TEXT |
+| M2 | `src/ingest.py:185–192` | Collection cleared before new ingestion succeeds (data loss if all reads fail) | Deferred clearing until first successful chunk generation via `needs_clear` flag |
+| M3 | `src/sql_retriever.py:53` | LLM-generated SQL wrapped in markdown fences (`` ```sql...``` ``) fails validation | Strip markdown code fences before SQL validation in `execute_sql_query()` |
+| M4 | `src/verifier.py:263` | `max_iterations=0` with `enabled: true` causes `range(1,1)` = empty loop → falls through to refusal | Added guard: `max_iterations <= 0` → return response with `verification_passed: None` |
+| M5 | `app_cli.py:307–310` | CLI clarification exchanges not added to `conversation_history` | Added Q&A pairs to history during clarification loop for pronoun resolution |
+| M6 | `src/retriever.py:88` | Hardcoded `knowledge_base/` prefix in context path — wrong if user changes `paths.knowledge_base` | Removed prefix; use `source` metadata directly |
+
+**Regression tests added** (5 new tests):
+- `test_infer_column_type_preserves_leading_zeros` — M1: "01234" → TEXT, "0" → INTEGER
+- `test_ingest_deferred_clear_preserves_data_on_total_failure` — M2: data preserved when all reads fail
+- `test_execute_sql_strips_markdown_fences` — M3: fenced SQL still executes
+- `test_max_iterations_zero_skips_verification` — M4: max_iterations=0 returns response, not refusal
+- `test_format_db_results_no_hardcoded_kb_prefix` — M6: no `knowledge_base/` prefix in context
+
+**162/162 tests passing** (3.92s) — 157 existing + 5 new regression tests.
+
+---
+
 ## Current State (2026-03-06)
 
-- **Branch**: `master` at commit `106354e`
-- **Tests**: 153/153 passing
-- **GitHub**: `https://github.com/LIANJie-Jason/chatbotsample_api` — up to date
-- **Total audits completed**: 10 (6 in previous sessions, 1 multi-agent SQL debug, 1 pre-push gate, 2 today)
-- **Total bugs fixed to date**: ~50+ across all sessions
+- **Working directory**: `/Users/lianjie/Desktop/tool making/chatbot template` (primary)
+- **Mirror**: `/tmp/chatbotsample_api` (synced)
+- **Tests**: 162/162 passing
+- **GitHub**: `https://github.com/LIANJie-Jason/chatbotsample_api` (needs push for recent fixes)
+- **Total audits completed**: 12 (6 in initial sessions, 2 in second session, 4 this session)
+- **Total bugs fixed to date**: ~71+ across all sessions (4 HIGH + 6 MEDIUM this round)
 
 ---
 
@@ -1081,10 +1237,13 @@ The working copy at `/Users/lianjie/Desktop/tool making/chatbot template` is beh
 - [x] ~~Comprehensive multi-agent debug review (round 1)~~
 - [x] ~~Commit and push bug fix round 2 (7 bugs)~~
 - [x] ~~6-agent full-codebase debug audit (round 2) — 8 more bugs fixed~~
-- [ ] Sync Desktop copy with real repo (or deprecate Desktop copy)
+- [x] ~~4-agent focused audit (round 3) — 2 HIGH + 10 MEDIUM fixes~~
+- [x] ~~Sync Desktop copy with real repo~~
+- [x] ~~4-agent workflow-tracing audit (round 4) — 4 HIGH fixes~~
+- [x] ~~Fix 6 MEDIUM bugs (M1–M6)~~
+- [ ] Push latest fixes to GitHub
+- [ ] Add integration tests for `retrieve()`, `verify_and_respond()` loop, `compute_similarity_flags()`
 - [ ] Replace PyPDF2 with pypdf (PyPDF2 is deprecated)
-- [ ] Consider adding provider switching in setup wizard (currently only one provider per config)
 - [ ] Tune `max_distance` threshold based on more user testing
-- [ ] Add integration tests for retrieval pipeline and verification loop
-- [ ] Recreate keyword hybrid search (lost during SQL merge — see note above)
+- [ ] Recreate keyword hybrid search (lost during SQL merge)
 - [ ] Clean up sql-layer branch and worktree

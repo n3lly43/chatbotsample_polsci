@@ -67,7 +67,7 @@ def retrieve_from_vectordb(query: str, cfg: dict) -> list[dict]:
                 chunks.append({
                     "text": meta_result["documents"][0],
                     "metadata": meta_result["metadatas"][0],
-                    "distance": 0.0,
+                    "distance": 1.0,  # fallback — not a real distance match
                 })
         except Exception:
             pass
@@ -85,7 +85,7 @@ def format_db_results_as_context(chunks: list[dict]) -> str:
         meta = chunk.get("metadata", {})
         dataset = meta.get("dataset", "")
         dataset_label = f" [Dataset: {dataset}]" if dataset else ""
-        source_path = f"knowledge_base/{meta.get('source', 'unknown')}"
+        source_path = meta.get('source', 'unknown')
         parts.append(
             f"[CHUNK-LOCAL-{i:03d}] From: {meta.get('source', 'unknown')}, "
             f"Page/Section {meta.get('page', '?')}{dataset_label}\n"
@@ -152,6 +152,7 @@ def _run_sql_retrieval(sql_query: str, cfg: dict) -> tuple[list[dict], str]:
     import os
     from src.sql_retriever import execute_sql_query, format_sql_results_as_context, _lookup_source_file
 
+    max_rows = cfg.get("sql", {}).get("max_rows", 200)
     sql_rows = execute_sql_query(sql_query, cfg)
     if not sql_rows:
         return [], ""
@@ -174,6 +175,7 @@ def _run_sql_retrieval(sql_query: str, cfg: dict) -> tuple[list[dict], str]:
     table_info = schema.get(table_name)
     sql_context = format_sql_results_as_context(
         sql_rows, sql_query, source_file, table_info=table_info,
+        max_rows=max_rows,
     )
     return sql_rows, sql_context
 

@@ -17,6 +17,19 @@ def test_format_db_results_as_context_with_chunks():
     assert "Test content here." in context
     assert "PRIMARY" in context
 
+
+def test_format_db_results_no_hardcoded_kb_prefix():
+    """M6: Path should use source metadata, not hardcoded 'knowledge_base/' prefix."""
+    from src.retriever import format_db_results_as_context
+    chunks = [{
+        "text": "Content",
+        "metadata": {"source": "MyData/report.pdf", "dataset": "MyData", "page": "1"},
+        "distance": 0.1,
+    }]
+    context = format_db_results_as_context(chunks)
+    assert "MyData/report.pdf" in context
+    assert "knowledge_base/MyData/report.pdf" not in context
+
 def test_build_combined_context_no_sources():
     from src.retriever import build_combined_context
     result = build_combined_context([], [])

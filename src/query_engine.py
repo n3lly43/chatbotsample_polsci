@@ -123,14 +123,16 @@ def _parse_qu_result(raw: str, original_query: str) -> dict:
     except (json.JSONDecodeError, TypeError):
         pass
 
-    # Regex fallback: find first { ... } block
+    # Fallback: scan for the first valid JSON object using raw_decode
     if parsed is None:
-        match = re.search(r"\{[\s\S]*\}", raw)
-        if match:
-            try:
-                parsed = json.loads(match.group())
-            except (json.JSONDecodeError, TypeError):
-                pass
+        decoder = json.JSONDecoder()
+        for i, ch in enumerate(raw):
+            if ch == '{':
+                try:
+                    parsed, _ = decoder.raw_decode(raw, i)
+                    break
+                except json.JSONDecodeError:
+                    continue
 
     # Unparseable: fall back to raw query
     if not isinstance(parsed, dict) or "action" not in parsed:

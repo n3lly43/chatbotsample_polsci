@@ -15,7 +15,12 @@ def generate(system_prompt: str, user_message: str, api_key: str,
     try:
         return response.text
     except ValueError:
-        return ""
+        # Gemini raises ValueError when the response is blocked by safety filters.
+        # Return a descriptive message so the caller knows the cause.
+        block_reason = getattr(response, "prompt_feedback", None)
+        if block_reason:
+            return f"[Gemini blocked: {block_reason}]"
+        return "[Gemini blocked: response filtered by safety settings]"
 
 def list_models(api_key: str) -> list[str]:
     try:

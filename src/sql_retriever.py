@@ -50,6 +50,11 @@ def execute_sql_query(sql_query: str, cfg: dict) -> list[dict]:
     Returns:
         List of row dicts, or empty list on any error.
     """
+    # Strip markdown code fences if present (LLMs often wrap SQL in ```sql...```)
+    sql_query = sql_query.strip()
+    if sql_query.startswith("```"):
+        sql_query = sql_query.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
+
     if not _validate_sql(sql_query):
         return []
 
@@ -74,7 +79,7 @@ def execute_sql_query(sql_query: str, cfg: dict) -> list[dict]:
 
 def format_sql_results_as_context(
     rows: list[dict], sql_query: str, source_file: str,
-    table_info: dict = None,
+    table_info: dict = None, max_rows: int = 0,
 ) -> str:
     """Format SQL result rows as context for the verification pipeline.
 
@@ -86,15 +91,21 @@ def format_sql_results_as_context(
         sql_query: The SQL query that produced these rows.
         source_file: Original source file path.
         table_info: Schema entry for the table (includes column descriptions).
+        max_rows: The max_rows limit used in the query. When len(rows) >= max_rows,
+            a truncation notice is appended so the LLM knows data may be incomplete.
     """
     if not rows:
         return ""
+
+    row_label = f"Rows returned: {len(rows)}"
+    if max_rows and len(rows) >= max_rows:
+        row_label += f" (truncated — more rows may exist, limit was {max_rows})"
 
     parts = [
         "=== SQL Query Results (PRIMARY — from local dataset) ===\n",
         f"Query: {sql_query}",
         f"Source: {source_file}",
-        f"Rows returned: {len(rows)}\n",
+        f"{row_label}\n",
     ]
 
     # Include table and column descriptions so the LLM understands the data

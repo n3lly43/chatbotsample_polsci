@@ -8,7 +8,7 @@ def read_csv_tab(file_path: str, delimiter: str = None) -> list[dict]:
         ext = Path(file_path).suffix.lower()
         delimiter = "\t" if ext in (".tab", ".tsv") else ","
 
-    with open(file_path, "r", encoding="utf-8", errors="replace") as f:
+    with open(file_path, "r", encoding="utf-8-sig", errors="replace") as f:
         reader = csv.reader(f, delimiter=delimiter)
         rows = list(reader)
 

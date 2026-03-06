@@ -231,8 +231,8 @@ def build_query_understanding_prompt(
         history_str = "(No prior conversation)"
 
     if sql_schema_summary:
-        sql_routing_block = _escape_braces(
-            _SQL_ROUTING_INSTRUCTIONS.format(schema_text=sql_schema_summary)
+        sql_routing_block = _SQL_ROUTING_INSTRUCTIONS.format(
+            schema_text=sql_schema_summary
         )
     else:
         sql_routing_block = ""
@@ -240,24 +240,19 @@ def build_query_understanding_prompt(
     if kb_overview:
         kb_overview_block = (
             "KNOWLEDGE BASE CONTENTS (use this to understand what is available):\n"
-            + _escape_braces(kb_overview)
+            + kb_overview
             + "\n"
         )
     else:
         kb_overview_block = ""
 
     return QUERY_UNDERSTANDING_PROMPT_TEMPLATE.format(
-        domain=_escape_braces(domain),
-        history=_escape_braces(history_str),
-        query=_escape_braces(query),
+        domain=domain,
+        history=history_str,
+        query=query,
         sql_routing_block=sql_routing_block,
         kb_overview_block=kb_overview_block,
     )
-
-
-def _escape_braces(text: str) -> str:
-    """Escape curly braces in user-supplied text for safe use with str.format()."""
-    return text.replace("{", "{{").replace("}", "}}")
 
 
 def build_prompt(
@@ -280,15 +275,15 @@ def build_prompt(
             "KNOWLEDGE BASE OVERVIEW (general awareness — do NOT cite this\n"
             "section directly; use it to understand the broader context)\n"
             "---------------------------------------------------------------------\n"
-            f"{_escape_braces(kb_overview)}\n\n"
+            f"{kb_overview}\n\n"
         )
     else:
         overview_section = ""
 
     return SYSTEM_PROMPT_TEMPLATE.format(
-        bot_name=_escape_braces(bot_name),
-        domain=_escape_braces(domain),
-        context=_escape_braces(context),
+        bot_name=bot_name,
+        domain=domain,
+        context=context,
         kb_overview_section=overview_section,
     )
 
@@ -321,8 +316,8 @@ def build_verification_prompt(
         else "No similarity flags detected."
     )
     return VERIFICATION_PROMPT_TEMPLATE.format(
-        response=_escape_braces(response),
-        context=_escape_braces(context),
-        phrase_flags=_escape_braces(phrase_str),
-        similarity_flags=_escape_braces(similarity_str),
+        response=response,
+        context=context,
+        phrase_flags=phrase_str,
+        similarity_flags=similarity_str,
     )

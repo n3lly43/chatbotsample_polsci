@@ -17,7 +17,6 @@ import json
 import os
 from pathlib import Path
 
-from src.prompts import _escape_braces
 
 META_CHUNK_ID = "kb_meta_overview_001"
 META_SOURCE = "Knowledge Base Overview"
@@ -176,9 +175,9 @@ def generate_kb_overview_with_llm(
         sql_section = "\n".join(sql_lines)
 
     prompt = _META_GENERATION_PROMPT.format(
-        inventory=_escape_braces(inventory),
-        samples=_escape_braces(samples),
-        sql_section=_escape_braces(sql_section),
+        inventory=inventory,
+        samples=samples,
+        sql_section=sql_section,
     )
 
     try:
@@ -195,13 +194,25 @@ def generate_kb_overview_with_llm(
         return generate_kb_overview(file_records, sample_chunks, sql_schema)
 
 
-def collect_file_records(collection) -> list[dict]:
-    """Extract unique file records from ChromaDB metadata."""
+def _collect_all_data(collection) -> tuple[list[str], list[dict]]:
+    """Fetch all documents and metadatas from ChromaDB in a single call."""
     if collection.count() == 0:
-        return []
+        return [], []
+    all_data = collection.get(include=["documents", "metadatas"])
+    return all_data.get("documents", []), all_data.get("metadatas", [])
 
-    all_data = collection.get(include=["metadatas"])
-    metadatas = all_data.get("metadatas", [])
+
+def collect_file_records(collection, *, _cache: tuple = None) -> list[dict]:
+    """Extract unique file records from ChromaDB metadata.
+
+    Args:
+        _cache: Optional (documents, metadatas) tuple to avoid redundant
+            collection.get() calls when used alongside collect_sample_chunks.
+    """
+    if _cache is not None:
+        _, metadatas = _cache
+    else:
+        _, metadatas = _collect_all_data(collection)
 
     source_info: dict[str, dict] = {}
     for meta in metadatas:
@@ -221,14 +232,17 @@ def collect_file_records(collection) -> list[dict]:
     return list(source_info.values())
 
 
-def collect_sample_chunks(collection) -> dict[str, str]:
-    """Get the first chunk from each unique source for LLM analysis."""
-    if collection.count() == 0:
-        return {}
+def collect_sample_chunks(collection, *, _cache: tuple = None) -> dict[str, str]:
+    """Get the first chunk from each unique source for LLM analysis.
 
-    all_data = collection.get(include=["documents", "metadatas"])
-    documents = all_data.get("documents", [])
-    metadatas = all_data.get("metadatas", [])
+    Args:
+        _cache: Optional (documents, metadatas) tuple to avoid redundant
+            collection.get() calls when used alongside collect_file_records.
+    """
+    if _cache is not None:
+        documents, metadatas = _cache
+    else:
+        documents, metadatas = _collect_all_data(collection)
 
     samples: dict[str, str] = {}
     for doc, meta in zip(documents, metadatas):
@@ -311,8 +325,9 @@ def build_and_store_overview(collection, cfg: dict) -> str:
 
     Returns the overview text.
     """
-    file_records = collect_file_records(collection)
-    sample_chunks = collect_sample_chunks(collection)
+    cache = _collect_all_data(collection)
+    file_records = collect_file_records(collection, _cache=cache)
+    sample_chunks = collect_sample_chunks(collection, _cache=cache)
     sql_schema = load_sql_schema(cfg)
 
     overview = generate_kb_overview_with_llm(

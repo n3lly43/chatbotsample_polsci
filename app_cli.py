@@ -306,6 +306,13 @@ def main() -> None:
                     clarification = ""
                 if not clarification:
                     break
+                # Add clarification exchange to history for pronoun resolution
+                state.setdefault("conversation_history", []).append(
+                    {"role": "assistant", "content": clarification_question}
+                )
+                state["conversation_history"].append(
+                    {"role": "user", "content": clarification}
+                )
                 combined = f"{user_input} (Clarification: Q: {clarification_question} A: {clarification})"
                 with console.status("[bold blue]Understanding your question...[/bold blue]"):
                     try:

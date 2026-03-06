@@ -12,6 +12,10 @@ pyyaml>=6.0
 python-dotenv>=1.0.0
 numpy>=1.24.0
 
+# Local embeddings (ChromaDB DefaultEmbeddingFunction)
+onnxruntime>=1.14.0
+tokenizers>=0.13.0
+
 # LLM providers
 openai>=1.0.0
 anthropic>=0.20.0
