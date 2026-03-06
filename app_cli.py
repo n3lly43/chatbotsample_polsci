@@ -110,7 +110,9 @@ def _format_sources(retrieval_result: dict) -> str:
     if sql_results:
         if db_results:
             lines.append("")
-        lines.append(f"SQL Results: {len(sql_results)} row(s) returned")
+        sql_match = retrieval_result.get("sql_match_type", "")
+        match_note = f" (matched via {sql_match} match)" if sql_match else ""
+        lines.append(f"SQL Results: {len(sql_results)} row(s) returned{match_note}")
 
     if web_results:
         if db_results or sql_results:
@@ -405,9 +407,11 @@ def main() -> None:
         db_count = len(retrieval_result.get("db_results", []))
         web_count = len(retrieval_result.get("web_results", []))
         sql_count = len(retrieval_result.get("sql_results", []))
+        sql_match = retrieval_result.get("sql_match_type", "")
         source_summary = f"[dim]Sources: {db_count} local"
         if sql_count:
-            source_summary += f", {sql_count} SQL rows"
+            match_label = f" ({sql_match} match)" if sql_match else ""
+            source_summary += f", {sql_count} SQL rows{match_label}"
         if web_count:
             source_summary += f", {web_count} web"
         source_summary += " -- type /sources for details[/dim]"

@@ -154,6 +154,25 @@ def format_sql_results_as_context(
     return "\n".join(parts)
 
 
+def make_fuzzy_query(sql: str) -> str | None:
+    """Convert exact equality on text values to LIKE fuzzy matching.
+
+    Transforms ``column = 'value'`` into ``column LIKE '%value%'``
+    so that partial country names (e.g. "South Korea" matching
+    "South Korea (Republic of Korea)") can be found.
+
+    Returns the modified query, or None if no substitutions were made.
+    """
+    # Match patterns like: column = 'value' or column='value'
+    pattern = re.compile(
+        r"""(["']?\w+["']?\s*)=\s*'([^']+)'""",
+    )
+    new_sql, count = pattern.subn(r"\1LIKE '%\2%'", sql)
+    if count == 0:
+        return None
+    return new_sql
+
+
 def _lookup_source_file(table_name: str, schema: dict) -> str:
     """Look up the original source file for a SQL table name."""
     entry = schema.get(table_name)

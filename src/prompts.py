@@ -206,6 +206,8 @@ set route to "sql" or "both".
 When route is "sql" or "both", you MUST provide a valid SQLite SELECT query
 in the "sql_query" field. When route is "vector", you SHOULD still include
 a "sql_query" if the data tables might answer the question as a fallback.
+Use exact equality (=) for text columns. The system will automatically
+retry with fuzzy matching (LIKE) if the exact query returns no results.
 Use only table/column names from the schema below.
 
 {schema_text}

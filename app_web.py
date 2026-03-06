@@ -228,9 +228,11 @@ def render_chat():
                 n_local = len(retrieval_result.get("db_results", []))
                 n_web = len(retrieval_result.get("web_results", []))
                 n_sql = len(retrieval_result.get("sql_results", []))
+                sql_match = retrieval_result.get("sql_match_type", "")
                 source_label = f"Found {n_local} local"
                 if n_sql:
-                    source_label += f" + {n_sql} SQL rows"
+                    match_label = f" ({sql_match} match)" if sql_match else ""
+                    source_label += f" + {n_sql} SQL rows{match_label}"
                 source_label += f" + {n_web} web sources. Generating response..."
                 status.update(label=source_label)
 

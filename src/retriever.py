@@ -202,19 +202,40 @@ def _build_fallback_sql_query(query: str, cfg: dict) -> str | None:
     return None
 
 
-def _run_sql_retrieval(sql_query: str, cfg: dict) -> tuple[list[dict], str]:
+def _run_sql_retrieval(sql_query: str, cfg: dict) -> tuple[list[dict], str, str]:
     """Execute SQL query and format results as context.
 
-    Returns (sql_rows, sql_context).
+    Tries the exact query first.  If it returns zero rows, automatically
+    retries with fuzzy matching (``=`` → ``LIKE '%…%'``).
+
+    Returns (sql_rows, sql_context, match_type) where match_type is
+    ``"exact"``, ``"fuzzy"``, or ``""`` (no results).
     """
     import json as _json
     import os
-    from src.sql_retriever import execute_sql_query, format_sql_results_as_context, _lookup_source_file
+    from src.sql_retriever import (
+        execute_sql_query, format_sql_results_as_context,
+        _lookup_source_file, make_fuzzy_query,
+    )
 
     max_rows = cfg.get("sql", {}).get("max_rows", 200)
+
+    # Step 1: try exact query
     sql_rows = execute_sql_query(sql_query, cfg)
+    effective_query = sql_query
+    match_type = "exact"
+
+    # Step 2: if no results, try fuzzy fallback
     if not sql_rows:
-        return [], ""
+        fuzzy = make_fuzzy_query(sql_query)
+        if fuzzy:
+            sql_rows = execute_sql_query(fuzzy, cfg)
+            if sql_rows:
+                effective_query = fuzzy
+                match_type = "fuzzy"
+
+    if not sql_rows:
+        return [], "", ""
 
     sql_db_dir = cfg.get("paths", {}).get("sql_db", "sql_db")
     if not os.path.isabs(sql_db_dir):
@@ -229,14 +250,14 @@ def _run_sql_retrieval(sql_query: str, cfg: dict) -> tuple[list[dict], str]:
                 schema = _json.load(f)
         except Exception:
             pass
-    table_name = _extract_table_from_query(sql_query)
+    table_name = _extract_table_from_query(effective_query)
     source_file = _lookup_source_file(table_name, schema)
     table_info = schema.get(table_name)
     sql_context = format_sql_results_as_context(
-        sql_rows, sql_query, source_file, table_info=table_info,
+        sql_rows, effective_query, source_file, table_info=table_info,
         max_rows=max_rows,
     )
-    return sql_rows, sql_context
+    return sql_rows, sql_context, match_type
 
 
 def retrieve(
@@ -249,10 +270,11 @@ def retrieve(
     sql_enabled = cfg.get("sql", {}).get("enabled", True)
     sql_context = ""
     sql_rows = []
+    sql_match_type = ""
 
     # ── SQL retrieval ────────────────────────────────────────────────
     if sql_enabled and route in ("sql", "both") and sql_query:
-        sql_rows, sql_context = _run_sql_retrieval(sql_query, cfg)
+        sql_rows, sql_context, sql_match_type = _run_sql_retrieval(sql_query, cfg)
 
     # ── Vector retrieval ─────────────────────────────────────────────
     db_results = []
@@ -275,13 +297,13 @@ def retrieve(
             # LLM-generated sql_query already failed; build a fresh keyword query
             fallback_query = _build_fallback_sql_query(query, cfg)
             if fallback_query:
-                sql_rows, sql_context = _run_sql_retrieval(fallback_query, cfg)
+                sql_rows, sql_context, sql_match_type = _run_sql_retrieval(fallback_query, cfg)
         else:
             # route is "vector" or "both" — existing fallback logic
             if not sql_query:
                 sql_query = _build_fallback_sql_query(query, cfg)
             if sql_query:
-                sql_rows, sql_context = _run_sql_retrieval(sql_query, cfg)
+                sql_rows, sql_context, sql_match_type = _run_sql_retrieval(sql_query, cfg)
 
     # ── Web search ───────────────────────────────────────────────────
     web_enabled = cfg.get("web_search", {}).get("enabled", False)
@@ -301,5 +323,6 @@ def retrieve(
         "db_results": db_results,
         "web_results": web_results,
         "sql_results": sql_rows,
+        "sql_match_type": sql_match_type,
         "has_sources": has_sources,
     }
