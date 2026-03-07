@@ -168,14 +168,19 @@ def validate_citations(response: str, retrieval_result: dict) -> list[str]:
     db_results = retrieval_result.get("db_results", [])
     db_count = len(db_results)
     web_count = len(retrieval_result.get("web_results", []))
-    sql_count = len(retrieval_result.get("sql_results", []))
+    # SQL rows come from a single table query — count as 1 citable source,
+    # not one per row, since the LLM cites the table as a single reference.
+    sql_count = 1 if retrieval_result.get("sql_results") else 0
     total_sources = db_count + web_count + sql_count
 
     if total_sources == 0:
         return warnings
 
     # Extract citation numbers from response BODY only (not References section)
-    refs_split = re.split(r'(?im)^#+\s*(?:references|sources)\s*$|^\*\*(?:references|sources)\*\*\s*$', response)
+    refs_split = re.split(
+        r'(?im)^#+\s*(?:references?|sources?)[\s:]*(?:\(.*?\))?\s*$|^\*\*(?:references?|sources?)[\s:]*(?:\(.*?\))?\*\*\s*$',
+        response
+    )
     body_text = refs_split[0] if refs_split else response
     citation_nums = set(int(m) for m in re.findall(r"\[(\d+)\]", body_text))
     if not citation_nums:
@@ -190,7 +195,7 @@ def validate_citations(response: str, retrieval_result: dict) -> list[str]:
 
     # Check that source file names from retrieval appear in the References section
     refs_match = re.search(
-        r"(?im)(?:^#+\s*(?:references|sources)\s*$|^\*\*(?:references|sources)\*\*\s*$).*",
+        r"(?im)(?:^#+\s*(?:references?|sources?)[\s:]*(?:\(.*?\))?\s*$|^\*\*(?:references?|sources?)[\s:]*(?:\(.*?\))?\*\*\s*$).*",
         response, re.DOTALL,
     )
     if refs_match:

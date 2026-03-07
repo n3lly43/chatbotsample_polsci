@@ -43,7 +43,7 @@ def retrieve_from_vectordb(query: str, cfg: dict) -> list[dict]:
     base can still be answered.
     """
     retrieval_cfg = cfg.get("retrieval", {})
-    top_k = retrieval_cfg.get("top_k", 50)
+    top_k = retrieval_cfg.get("top_k", 20)
     max_distance = retrieval_cfg.get("max_distance", 0.55)
     collection = _get_cached_collection(cfg)
 
@@ -93,32 +93,59 @@ def retrieve_from_vectordb(query: str, cfg: dict) -> list[dict]:
     return chunks
 
 
-def format_db_results_as_context(chunks: list[dict]) -> str:
-    """Format vector DB results with CHUNK-LOCAL IDs for citation anchoring."""
+def format_db_results_as_context(chunks: list[dict], max_chars: int = 0) -> str:
+    """Format vector DB results with CHUNK-LOCAL IDs for citation anchoring.
+
+    Args:
+        chunks: Retrieved chunks sorted by distance (most relevant first).
+        max_chars: If > 0, stop adding chunks once total context exceeds
+            this character budget.  Chunks already sorted by relevance
+            ensure the most important content is kept.
+    """
     if not chunks:
         return ""
 
-    parts = ["=== Local Document Results (PRIMARY — always trust these over web sources) ===\n"]
+    header = "=== Local Document Results (PRIMARY — always trust these over web sources) ===\n"
+    parts = [header]
+    total_chars = len(header)
     for i, chunk in enumerate(chunks, 1):
         meta = chunk.get("metadata", {})
         dataset = meta.get("dataset", "")
         dataset_label = f" [Dataset: {dataset}]" if dataset else ""
         source_path = meta.get('source', 'unknown')
-        parts.append(
+        entry = (
             f"[CHUNK-LOCAL-{i:03d}] From: {meta.get('source', 'unknown')}, "
             f"Page/Section {meta.get('page', '?')}{dataset_label}\n"
             f"  Path: {source_path}\n"
             f"  {chunk.get('text', '')}\n"
         )
+        if max_chars > 0 and total_chars + len(entry) > max_chars and i > 1:
+            break
+        parts.append(entry)
+        total_chars += len(entry)
     return "\n".join(parts)
 
 
 def build_combined_context(
     db_results: list[dict], web_results: list[dict], sql_context: str = "",
+    max_context_chars: int = 0,
 ) -> str:
-    """Build combined context string from local, SQL, and web results."""
-    db_context = format_db_results_as_context(db_results)
+    """Build combined context string from local, SQL, and web results.
+
+    When *max_context_chars* > 0, the local-chunk context is truncated to
+    fit within the budget (after accounting for SQL and web context).
+    SQL and web context are never truncated; the budget applies to local chunks.
+    """
+    # SQL context is precise and compact — always include in full.
+    # Web context is supplementary — include in full but account for its size.
+    # Allocate remaining budget to local chunks.
     web_context = format_web_results_as_context(web_results)
+    local_budget = 0
+    if max_context_chars > 0:
+        reserved = len(sql_context) + len(web_context)
+        local_budget = max(max_context_chars - reserved, 2000)
+
+    db_context = format_db_results_as_context(db_results, max_chars=local_budget)
 
     has_local = bool(db_results) or bool(sql_context)
     has_web = bool(web_results)
@@ -428,7 +455,11 @@ def retrieve(
             max_results *= 2
         web_results = search(query, backend=backend, limit=max_results)
 
-    combined_context = build_combined_context(db_results, web_results, sql_context=sql_context)
+    max_context_chars = cfg.get("retrieval", {}).get("max_context_chars", 12000)
+    combined_context = build_combined_context(
+        db_results, web_results, sql_context=sql_context,
+        max_context_chars=max_context_chars,
+    )
     has_sources = bool(db_results) or bool(web_results) or bool(sql_rows)
 
     return {

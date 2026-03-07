@@ -25,13 +25,47 @@ def _strip_quoted(sql: str) -> str:
 
 
 def _strip_sql_comments(sql: str) -> str:
-    """Remove SQL comments (single-line -- and multi-line /* */) from a query."""
-    prev = None
-    while prev != sql:
-        prev = sql
-        sql = re.sub(r'/\*.*?\*/', '', sql, flags=re.DOTALL)
-        sql = re.sub(r'--[^\n]*', '', sql)
-    return sql
+    """Remove SQL comments (single-line -- and multi-line /* */) from a query.
+
+    Respects single-quoted string literals: ``--`` and ``/* */`` inside
+    quotes are preserved.
+    """
+    result = []
+    i = 0
+    n = len(sql)
+    while i < n:
+        # Single-quoted string literal — copy verbatim (handles '' escaping)
+        if sql[i] == "'":
+            result.append("'")
+            i += 1
+            while i < n:
+                if sql[i] == "'" and i + 1 < n and sql[i + 1] == "'":
+                    result.append("''")
+                    i += 2
+                elif sql[i] == "'":
+                    result.append("'")
+                    i += 1
+                    break
+                else:
+                    result.append(sql[i])
+                    i += 1
+        # Block comment
+        elif sql[i] == '/' and i + 1 < n and sql[i + 1] == '*':
+            i += 2
+            while i < n:
+                if sql[i] == '*' and i + 1 < n and sql[i + 1] == '/':
+                    i += 2
+                    break
+                i += 1
+        # Line comment
+        elif sql[i] == '-' and i + 1 < n and sql[i + 1] == '-':
+            i += 2
+            while i < n and sql[i] != '\n':
+                i += 1
+        else:
+            result.append(sql[i])
+            i += 1
+    return ''.join(result)
 
 
 def _validate_sql(sql: str) -> bool:

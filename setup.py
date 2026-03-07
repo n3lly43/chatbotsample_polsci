@@ -48,8 +48,9 @@ def generate_config(
         "retrieval": {
             "chunk_size": 1000,
             "chunk_overlap": 100,
-            "top_k": 50,
+            "top_k": 20,
             "max_distance": 0.55,
+            "max_context_chars": 12000,
         },
         "web_search": {
             "enabled": web_search,
