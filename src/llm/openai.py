@@ -31,7 +31,7 @@ def generate(system_prompt: str, user_message: str, api_key: str,
                 model=model,
                 messages=messages,
                 temperature=temperature,
-                max_tokens=max_tokens,
+                max_completion_tokens=max_tokens,
             )
         if not response.choices:
             return ""
