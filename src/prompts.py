@@ -106,7 +106,14 @@ problems.
 Run through this 10-point verification checklist and report results:
 
 1. Does every factual claim have a numbered citation endnote (e.g. [1], [2])?
-2. For each cited claim, can you find the EXACT sentence or data point in the context that supports it? If you cannot point to specific supporting text, flag it as an error.
+2. For each cited claim, can you find supporting evidence in the context?
+   - For prose/document sources: look for the specific sentence or passage.
+   - For SQL/tabular data ([CHUNK-SQL-NNN] rows): the response may
+     legitimately SUMMARIZE across multiple rows (e.g., "scores ranged
+     from 3 to 5"). Verify that the individual data points exist in the
+     SQL rows, even if no single row contains the exact summary statement.
+     Aggregation, averaging, and range descriptions across SQL rows are
+     VALID as long as the underlying numbers are present in the data.
 3. Are there any claims that appear fabricated or hallucinated?
 4. Are direct quotes accurately reproduced from the context?
 5. Does the References section exist and list all cited sources?
@@ -114,7 +121,9 @@ Run through this 10-point verification checklist and report results:
 7. Are any phrase-level flags confirmed as hallucinations?
 8. Do similarity flags indicate unsupported semantic drift?
 9. Is the response length proportional to the available evidence?
-10. Do the citation numbers match the correct sources? (e.g., [1] must refer to the first source listed in References, and that source must actually support the claim)
+10. Do the citation numbers match the sources? Each citation should refer to
+    a source in the References section that actually supports the claim.
+    For SQL data, a single citation may cover an entire dataset/table.
 
 Return your analysis as JSON in the following format:
 
