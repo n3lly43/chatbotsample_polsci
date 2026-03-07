@@ -73,7 +73,7 @@ If the chatbot cannot find relevant information in your documents, it **refuses 
 
 ### Example
 
-Suppose you have the **NAVCO 2.0** (Nonviolent and Violent Campaigns and Outcomes) dataset in your knowledge base -- a CSV file, its codebook PDF, and the original Chenoweth & Stephan (2011) publication. You ask:
+Suppose you have the **NAVCO 2.0** (Nonviolent and Violent Campaigns and Outcomes) dataset in your knowledge base -- the `.dta` file, its codebook PDF, and the original Chenoweth & Stephan (2011) publication. You ask:
 
 > **You:** Why do nonviolent campaigns succeed more often than violent ones?
 
@@ -99,27 +99,29 @@ peak membership, and security force defections [3].
     -- knowledge_base/NAVCO/Chenoweth_Stephan_2011.pdf
 [2] Chenoweth_Stephan_2011.pdf, p. 46
     -- knowledge_base/NAVCO/Chenoweth_Stephan_2011.pdf
-[3] NAVCO2_codebook_2013.pdf, p. 7
-    -- knowledge_base/NAVCO/NAVCO2_codebook_2013.pdf
+[3] NAVCO2JPRcodebook2013.pdf, p. 7
+    -- knowledge_base/NAVCO/NAVCO2JPRcodebook2013.pdf
 ```
+
+> **Note:** The 53% figure comes from Chenoweth & Stephan's publication, which draws on NAVCO 1.1 (covering 1900--2006). The NAVCO 2.0 dataset itself (1945--2006, 250 campaigns) uses a binary success coding (0/1) and shows a 62% nonviolent success rate. The chatbot cites the source it found -- the PDF -- so the number reflects the publication's analysis, not a live query.
 
 You can also ask data questions directly:
 
 > **You:** How many nonviolent campaigns succeeded after 2000?
 
 ```
-Searching for: "nonviolent campaigns success_year > 2000 camp_goals"
+Searching for: "nonviolent campaigns success prim_method year > 2000"
 Using SQL query for structured data
 
-According to the NAVCO 2.0 dataset, 14 nonviolent campaigns that
-began after 2000 achieved full or partial success (success = 1 or 2)
-out of 31 total nonviolent campaigns in that period [1].
+According to the NAVCO 2.0 dataset, 8 nonviolent campaigns
+(prim_method = 1) active after 2000 achieved success (success = 1)
+out of 16 total nonviolent campaigns in that period [1].
 
 **References**
 
 **Local Sources (Primary):**
-[1] SQL query on navco__navco_2_0_data_csv
-    -- knowledge_base/NAVCO/navco_2.0_data.csv
+[1] SQL query on navco__navco_v2_0_dta
+    -- knowledge_base/NAVCO/NAVCO v2.0.dta
 ```
 
 ---
@@ -184,11 +186,11 @@ The query understanding layer uses the LLM to classify each question and route i
 
 ### Design Principle: Schema Enrichment
 
-Raw column names in datasets (e.g., `camp_type`, `viol_camp`, `success`) are meaningless to an LLM without context. During ingestion, the system:
+Raw column names in datasets (e.g., `prim_method`, `sec_defect`, `success`) are meaningless to an LLM without context. During ingestion, the system:
 
 1. **Detects codebook files** in the same directory as each dataset (files named "codebook", "dictionary", "readme", etc.)
 2. **Reads the codebook** and passes it to the LLM along with column names, types, and sample values
-3. **Generates human-readable descriptions** for each column (e.g., `success: Campaign outcome — 1 = success, 2 = partial success, 3 = failure`)
+3. **Generates human-readable descriptions** for each column (e.g., `success: Binary campaign outcome — 1 = success, 0 = failure`)
 4. **Injects the enriched schema into every query understanding prompt** so the LLM writes correct SQL (using actual column names, valid value ranges, and proper data types)
 
 This means the chatbot understands your data dictionary without you writing any configuration.
@@ -304,9 +306,8 @@ Copy your research files into the `knowledge_base/` folder. You can organize the
 knowledge_base/
   NAVCO/
     Chenoweth_Stephan_2011.pdf
-    Stephan_Chenoweth_2008_APSR.pdf
-    NAVCO2_codebook_2013.pdf
-    navco_2.0_data.csv
+    NAVCO2JPRcodebook2013.pdf
+    NAVCO v2.0.dta
   notes.txt
 ```
 
@@ -319,34 +320,32 @@ python ingest.py
 This reads all your files, splits them into searchable chunks, and stores them in a local vector database. Tabular files (CSV, Excel, Stata, SPSS, R data) are also loaded into a local SQLite database for structured queries. You only need to re-run this when you add, remove, or change documents.
 
 ```
-Found 4 files across 1 dataset(s):
+Found 3 files across 1 dataset(s):
 
-  NAVCO: 4 files (.csv, .pdf)
+  NAVCO: 3 files (.dta, .pdf)
 
 Processing: NAVCO/Chenoweth_Stephan_2011.pdf
   -> 47 chunks
-Processing: NAVCO/Stephan_Chenoweth_2008_APSR.pdf
-  -> 28 chunks
-Processing: NAVCO/NAVCO2_codebook_2013.pdf
+Processing: NAVCO/NAVCO2JPRcodebook2013.pdf
   -> 12 chunks
-Processing: NAVCO/navco_2.0_data.csv
-  -> 18 chunks
+Processing: NAVCO/NAVCO v2.0.dta
+  -> 681 chunks
 
 Ingesting 1 tabular file(s) into SQLite...
-  SQL: navco__navco_2_0_data_csv (392 rows, 18 columns)
+  SQL: navco__navco_v2_0_dta (1726 rows, 57 columns)
 SQL ingestion complete: 1 table(s).
 
 Generating knowledge base overview...
 KB overview generated and indexed.
 
-Ingestion complete: 105 chunks from 4 files.
+Ingestion complete: 740 chunks from 3 files.
 ```
 
 **What happens during ingestion:**
 
 - **Document chunking**: PDFs, Word files, and text are split into overlapping chunks for vector search
 - **Dual ingestion for tabular data**: CSV, Excel, Stata, SPSS, and R files are loaded into both the vector database (for conceptual questions like "what does success mean in NAVCO?") and a SQLite database (for structured queries like "how many campaigns succeeded?")
-- **Schema enrichment**: The chatbot automatically detects codebooks (files named "codebook", "readme", "data dictionary", etc.) and uses them with LLM analysis to generate human-readable column descriptions for your datasets (e.g., `success: Campaign outcome — 1 = success, 2 = partial success, 3 = failure`)
+- **Schema enrichment**: The chatbot automatically detects codebooks (files named "codebook", "readme", "data dictionary", etc.) and uses them with LLM analysis to generate human-readable column descriptions for your datasets (e.g., `success: Binary campaign outcome — 1 = success, 0 = failure`)
 - **KB meta overview**: An LLM-generated summary of the entire knowledge base, enabling the chatbot to answer meta-questions like "What data do you have?"
 
 ### 7. Start the chatbot
@@ -459,12 +458,12 @@ Before you can ask questions, you run `python ingest.py` to build the knowledge 
 
 | Phase | What happens | Example |
 |-------|-------------|---------|
-| **File reading** | Each file is read using a format-specific reader | `Chenoweth_Stephan_2011.pdf` → text from each page; `navco_2.0_data.csv` → rows with headers |
-| **Chunking** | Long documents are split into overlapping chunks (~1000 characters each) | The 200-page PDF becomes 47 searchable chunks |
+| **File reading** | Each file is read using a format-specific reader | `Chenoweth_Stephan_2011.pdf` → text from each page; `NAVCO v2.0.dta` → rows with headers |
+| **Chunking** | Long documents are split into overlapping chunks (~1000 characters each) | The publication PDF becomes 47 searchable chunks |
 | **Vector embedding** | Each chunk is converted to a numerical vector and stored in ChromaDB | Enables "find passages similar to my question" |
-| **SQL loading** | Tabular files are loaded into SQLite with type detection and null handling | `navco_2.0_data.csv` → table with 392 rows, 18 columns, correct numeric types |
-| **Schema enrichment** | Codebooks are detected; LLM generates column descriptions | `success` → "Campaign outcome — 1 = success, 2 = partial, 3 = failure" |
-| **KB meta overview** | An LLM-generated summary of everything in the knowledge base | "The knowledge base contains the NAVCO 2.0 dataset (392 campaigns, 1945–2014) with codebook and two publications by Chenoweth & Stephan..." |
+| **SQL loading** | Tabular files are loaded into SQLite with type detection and null handling | `NAVCO v2.0.dta` → table with 1726 rows, 57 columns, correct numeric types |
+| **Schema enrichment** | Codebooks are detected; LLM generates column descriptions | `success` → "Binary campaign outcome — 1 = success, 0 = failure" |
+| **KB meta overview** | An LLM-generated summary of everything in the knowledge base | "The knowledge base contains the NAVCO 2.0 dataset (250 campaigns, 1945–2006) with codebook and the Chenoweth & Stephan (2011) publication..." |
 
 The meta overview is stored as a special chunk in the vector database AND injected into the system prompt, so the chatbot always knows what it has access to.
 
@@ -478,8 +477,8 @@ Before searching, the chatbot uses the LLM to understand and optimize your quest
 |------------|---------|
 | **Reformulation** | "Why did it work?" → `"why do nonviolent campaigns succeed mechanisms participation"` (expands vague query into search-optimized keywords) |
 | **Pronoun resolution** | After discussing NAVCO, "How many are in the dataset?" → `"how many campaigns are in the NAVCO 2.0 dataset"` (resolves "it" from conversation history) |
-| **Clarification** | "Show me the data" → *"Do you mean the NAVCO 2.0 campaign data (navco_2.0_data.csv) or the codebook (NAVCO2_codebook_2013.pdf)?"* (asks when genuinely ambiguous, using KB overview to offer specific options) |
-| **SQL routing** | "How many campaigns succeeded after 2000?" → routes to SQL with query `SELECT COUNT(*) FROM navco__navco_2_0_data_csv WHERE success IN (1,2) AND year > 2000` |
+| **Clarification** | "Show me the data" → *"Do you mean the NAVCO 2.0 campaign data (NAVCO v2.0.dta) or the codebook (NAVCO2JPRcodebook2013.pdf)?"* (asks when genuinely ambiguous, using KB overview to offer specific options) |
+| **SQL routing** | "How many campaigns succeeded after 2000?" → routes to SQL with query `SELECT COUNT(*) FROM navco__navco_v2_0_dta WHERE success = 1 AND year > 2000` |
 | **Mixed routing** | "Explain what success means in NAVCO and count successful campaigns" → routes to BOTH vector (for the definition) and SQL (for the count) |
 
 The QU layer produces two outputs:
@@ -572,38 +571,37 @@ The verified answer is displayed with:
 ```
 You> What datasets do you have?
   [Verified] (1 iteration)
-  The knowledge base contains the NAVCO 2.0 dataset with 392 campaigns
-  from 1945 to 2014, its codebook, and two publications by Chenoweth
-  and Stephan. [1]
+  The knowledge base contains the NAVCO 2.0 dataset with 250 campaigns
+  from 1945 to 2006, its codebook, and the Chenoweth & Stephan (2011)
+  publication. [1]
 
 You> What does the success variable mean?
   Searching for: "NAVCO 2.0 success variable coding definition"
   [Verified] (1 iteration)
-  The success variable in NAVCO 2.0 codes campaign outcomes on a
-  three-point scale: 1 = success, 2 = partial success, 3 = failure [1].
-  A campaign is coded as successful if it achieved its stated maximalist
-  goals within a reasonable time frame of the campaign's peak [1][2].
+  The success variable in NAVCO 2.0 is a binary indicator: 1 = the
+  campaign achieved success, 0 = it did not. A campaign is coded as
+  successful if it achieved its stated maximalist goals within a
+  reasonable time frame of the campaign's peak [1][2].
 
-You> How many of each?
+You> How many succeeded?
   Searching for: "count campaigns by success outcome NAVCO 2.0"
   Using SQL query for structured data
   [Verified] (1 iteration)
-  Of the 392 campaigns in the NAVCO 2.0 dataset: 117 succeeded (30%),
-  60 achieved partial success (15%), and 215 failed (55%) [1].
+  Of the 250 campaigns in the NAVCO 2.0 dataset: 111 succeeded
+  (success = 1) and 138 did not (success = 0) [1].
 
 You> What about nonviolent ones specifically?
-  Searching for: "nonviolent campaigns success count NAVCO 2.0 viol_camp = 0"
+  Searching for: "nonviolent campaigns success count NAVCO 2.0 prim_method = 1"
   Using SQL query for structured data
   [Verified] (1 iteration)
-  Among the 108 nonviolent campaigns (viol_camp = 0): 57 succeeded
-  (53%), 18 achieved partial success (17%), and 33 failed (31%) [1].
-  This 53% success rate is consistent with the finding in Chenoweth and
-  Stephan (2011) that "nonviolent resistance campaigns were nearly
-  twice as likely to achieve full or partial success" [2].
+  Among the 109 nonviolent campaigns (prim_method = 1): 68 succeeded
+  (62%) and 41 did not (38%) [1]. This is consistent with the finding
+  in Chenoweth and Stephan (2011) that "nonviolent resistance campaigns
+  were nearly twice as likely to achieve full or partial success" [2].
 ```
 
 Notice how the chatbot:
-- Resolves "How many of each?" using conversation history (knows you mean the success variable)
+- Resolves "How many succeeded?" using conversation history (knows you mean the success variable)
 - Resolves "What about nonviolent ones?" as a follow-up to the previous count
 - Routes data questions to SQL automatically
 - Cites both the SQL query results and the PDF publication
