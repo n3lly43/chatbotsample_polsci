@@ -203,10 +203,10 @@ def test_retrieve_vector_route_fallback_still_works(
 @patch("src.retriever.retrieve_from_vectordb", return_value=[])
 @patch("src.retriever._run_sql_retrieval")
 @patch("src.retriever._build_fallback_sql_query")
-def test_retrieve_both_route_fallback_still_works(
+def test_retrieve_both_route_fallback_builds_fresh_query(
     mock_build_fallback, mock_run_sql, mock_vectordb, mock_search,
 ):
-    """Existing behavior: route='both', both empty, keyword SQL fallback runs."""
+    """When route='both' and LLM sql_query failed, build a fresh keyword query."""
     from src.retriever import retrieve
 
     # First call: LLM sql_query fails; second call: keyword fallback also fails
@@ -215,10 +215,10 @@ def test_retrieve_both_route_fallback_still_works(
 
     result = retrieve("some data", _BASE_CFG, route="both", sql_query="SELECT * FROM t WHERE x=1")
 
-    # For route="both", sql_query was already set so _build_fallback_sql_query
-    # should NOT be called (existing behavior: reuses the sql_query from QU)
-    mock_build_fallback.assert_not_called()
-    # _run_sql_retrieval called twice: once for LLM query, once for fallback with same query
+    # T2-03 fix: _build_fallback_sql_query IS called to build a fresh keyword
+    # query instead of re-using the already-failed LLM sql_query
+    mock_build_fallback.assert_called_once_with("some data", _BASE_CFG)
+    # _run_sql_retrieval called twice: once for LLM query, once for fresh fallback
     assert mock_run_sql.call_count == 2
 
 

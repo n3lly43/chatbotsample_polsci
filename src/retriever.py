@@ -7,6 +7,11 @@ from src.search import search, format_web_results_as_context
 _collection_cache = {}
 
 
+def clear_collection_cache():
+    """Clear the cached ChromaDB collection so it's re-read after re-ingestion."""
+    _collection_cache.clear()
+
+
 def _get_cached_collection(cfg: dict):
     """Get or create cached ChromaDB collection."""
     from src.ingest import get_chroma_collection
@@ -208,7 +213,8 @@ def _build_fallback_sql_query(query: str, cfg: dict) -> str | None:
                 safe_word = word.replace("'", "''")
                 if not re.match(r'^\w+$', safe_word):
                     continue  # Skip non-alphanumeric words
-                conditions.append(f'"{col}" LIKE \'%{safe_word}%\'')
+                safe_word = safe_word.replace('%', '\\%').replace('_', '\\_')
+                conditions.append(f'"{col}" LIKE \'%{safe_word}%\' ESCAPE \'\\\'')
 
         if conditions:
             where_clause = " OR ".join(conditions)
@@ -283,8 +289,9 @@ def _try_alternate_columns(sql_query: str, cfg: dict) -> tuple[list[dict], str] 
     # Strip dangerous characters for defense-in-depth
     if not re.match(r"^[\w\s.,'-]+$", safe_value):
         safe_value = re.sub(r"[;'\\\"]", "", safe_value)
+    safe_value = safe_value.replace('%', '\\%').replace('_', '\\_')
     for col in text_cols:
-        alt_query = f'SELECT * FROM "{table_name}" WHERE "{col}" LIKE \'%{safe_value}%\' LIMIT {max_rows}'
+        alt_query = f'SELECT * FROM "{table_name}" WHERE "{col}" LIKE \'%{safe_value}%\' ESCAPE \'\\\' LIMIT {max_rows}'
         rows = execute_sql_query(alt_query, cfg)
         if rows:
             return rows, alt_query

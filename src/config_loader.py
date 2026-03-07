@@ -30,6 +30,12 @@ def load_config(config_path: str = None) -> dict:
     with open(config_path, "r", encoding="utf-8") as f:
         cfg = yaml.safe_load(f) or {}
 
+    if not isinstance(cfg, dict):
+        raise ValueError(
+            f"Config file must contain a YAML mapping (dict), got {type(cfg).__name__}. "
+            "Run 'python setup.py' to regenerate config.yaml."
+        )
+
     # Normalize None-valued sections to empty dicts so chained .get() never
     # fails with AttributeError (e.g. `llm:` with no sub-keys → None).
     # Recurse into nested dicts so `paths:\n  vector_db:` also gets normalized.

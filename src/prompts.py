@@ -299,10 +299,13 @@ def build_prompt(
     else:
         overview_section = ""
 
+    # Sanitize context to prevent prompt injection via delimiter mimicry
+    safe_context = context.replace("=" * 69, "\u2261" * 69)
+
     return SYSTEM_PROMPT_TEMPLATE.format(
         bot_name=bot_name,
         domain=domain,
-        context=context,
+        context=safe_context,
         kb_overview_section=overview_section,
     )
 

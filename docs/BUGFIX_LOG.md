@@ -186,7 +186,7 @@ severity, file, root cause, fix applied, and the audit round that found it.
 | K12 | LOW | Multiple | `cfg.get("section", {})` systemic pattern — if YAML section exists but is `None`, returns `None` not `{}` | Partially mitigated by config_loader normalization; remaining ~30 locations are low risk |
 | K6 | LOW | `src/search/semantic_scholar.py` | Filters out papers without abstracts, reducing result count for some topics | By design — abstract-less papers can't provide useful context |
 | K7 | LOW | `src/retriever.py` | LIKE wildcards `_`/`%` not escaped in fallback SQL query | Minor — extra matches unlikely to cause visible problems |
-| K8 | LOW | `CLAUDE.md` | Test count says 162, should be 165 | Doc update needed |
+| K8 | LOW | `CLAUDE.md` | Test count said 162, actual is 174 | FIXED (Round 11 doc update) |
 | K9 | LOW | `src/verifier.py` | `compute_similarity_flags` regex `[a-z]{3,}` excludes non-ASCII and 2-letter acronyms (AI, US, UK) | Advisory-only layer; impact limited to noisy flags |
 
 ---
@@ -240,7 +240,7 @@ This round was a comprehensive pre-release inspection using 6 parallel audit age
 
 | # | Severity | File | Description | Reason |
 |---|----------|------|-------------|--------|
-| K13 | HIGH | `src/llm/gemini.py` + `requirements.txt` | **CON-4**: `google-generativeai` package fully deprecated; replacement `google-genai` has different API surface | Requires full API migration; functional for now but will break when PyPI removes package |
+| K13 | ~~HIGH~~ | `src/llm/gemini.py` + `requirements.txt` | **CON-4**: `google-generativeai` package fully deprecated; replacement `google-genai` has different API surface | **FIXED** — Migrated to `google-genai>=1.0.0` SDK with `genai.Client(api_key=...)` (thread-safe, no global state) |
 | K14 | MEDIUM | `src/verifier.py` | **AH-05**: Token cap step function too generous for small contexts (501 chars → 1536 tokens = 12:1 ratio) | Would benefit from continuous formula; current 3-tier approach is functional |
 | K15 | MEDIUM | `src/verifier.py:24-33` | **AH-11**: Warning phrase list missing common patterns: "studies have shown", "research suggests", "historically" | Advisory layer only; expandable post-release |
 | K16 | LOW | `src/verifier.py:184` | **INSPECT-2**: References section regex matches "sources" in prose, not just section header | Mitigated: filename matching still works because match includes everything to end of response |
@@ -276,13 +276,212 @@ User-reported bug: querying "south korea in pts" returned zero SQL results despi
 
 ---
 
+## Round 11 — 2026-03-06 Session 6 (8-Agent Final Pre-Release Audit + Cross-Check)
+
+This round was the strictest final audit before public release: 8 parallel agents (core pipeline, ingestion/storage, SQL security, LLM/prompts, UIs/setup, readers/search, test suite, design docs/architecture) each read every line of their assigned files and cross-checked findings.
+
+### HIGH Fixes
+
+| # | Severity | File | Bug | Fix | Status |
+|---|----------|------|-----|-----|--------|
+| 84 | HIGH | `src/query_engine.py:96` | QU `max_tokens=256` too tight — SQL queries + reasoning fields truncate JSON output, causing silent fallback to vector-only search | Increased to `max_tokens=512` | FIXED |
+| 85 | HIGH | `src/llm/gemini.py:25-26` | Gemini `generate()` returned error strings instead of raising exceptions, inconsistent with OpenAI/Anthropic — error strings leaked into correction loop as "responses" | Changed to `raise RuntimeError(...)` for API errors (ValueError for safety blocks still returns string) | FIXED |
+| 86 | HIGH | `src/sql_retriever.py:184-214` | `make_fuzzy_query()` unsanitized value interpolation — captured regex values not escaped for single quotes, allowing SQL injection via crafted `WHERE` values | Added `.replace("'", "''")` escaping in both `_phrase_replace()` and `_word_replace()` | FIXED |
+| 87 | HIGH | `src/config_loader.py:35-37` | Nested null YAML values crashed consumers — `vector_db:` with no value → `.get("vector_db", "chroma_db")` returns `None` → `TypeError` in `os.path.isabs(None)` | Changed top-level-only normalization to recursive `_normalize_nulls()` that handles all nested dicts | FIXED |
+| 88 | HIGH | `setup.py:93-94` | `.env` parser used `strip('"')` which removes ALL leading/trailing quotes, not just one matched pair — could corrupt API keys starting/ending with quote chars | Changed to proper one-pair unwrap: check for matching pair then slice `[1:-1]` | FIXED |
+| 89 | HIGH | `setup.py:100-102` | `.env` writer did not escape special chars in values — API keys containing `"` or `\` produced malformed `.env` files | Added `v.replace('\\', '\\\\').replace('"', '\\"')` before writing | FIXED |
+| 90 | HIGH | `src/sql_retriever.py:41-42` | `sqlite_master` access not blocked — `SELECT * FROM sqlite_master` passed all validation, exposing full DDL schema | Added `sqlite_(master\|schema\|temp_master\|temp_schema)` check in `_validate_sql()` | FIXED |
+| 91 | HIGH | `tests/test_verifier.py:65-66,95-96` | Wrong mock target — patched `src.kb_meta.load_kb_meta` but verifier imports `load_kb_meta_brief`; mocks were no-ops (only worked due to fallback chain) | Changed both patches to `src.kb_meta.load_kb_meta_brief` | FIXED |
+| 92 | HIGH | `src/retriever.py:381` | SQL keyword fallback ran unconditionally for `route="sql"` even when vector search already found results — wasted computation | Added `and not db_results` condition: only run keyword SQL when vector fallback also found nothing | FIXED |
+
+### MEDIUM Fixes
+
+| # | Severity | File | Bug | Fix | Status |
+|---|----------|------|-----|-----|--------|
+| 93 | MEDIUM | `src/search/semantic_scholar.py:47,49` | `citationCount: null` from API → `None` in sort key → `TypeError: '<' not supported between NoneType and int` crash | Changed to `paper.get("citationCount") or 0` and `x.get("citation_count") or 0` | FIXED |
+| 94 | MEDIUM | `app_web.py:123` | Stale KB welcome summary after re-ingest — `st.session_state.kb_welcome_summary` not cleared before `st.rerun()` | Added `st.session_state.pop("kb_welcome_summary", None)` before rerun | FIXED |
+| 95 | MEDIUM | `app_web.py:256-257,267` | SQL result count missing from web UI status label — showed "0 local + 0 web" even when SQL returned rows | Added `n_sql` to both "Verified" and "Done" status labels, matching CLI behavior | FIXED |
+| 96 | MEDIUM | `src/verifier.py:184` | References regex `\b(references\|sources)\b` matched casual mentions of "sources" in prose — citation audit checked entire response body instead of just References section | Changed to heading-specific regex: `^#+\s*(references\|sources)` or `^\*\*(references\|sources)\*\*` | FIXED |
+| 97 | MEDIUM | `src/verifier.py:486` | Non-strict mode used stale `citation_warnings` from last loop iteration, not from final corrected response | Added `validate_citations(response, retrieval_result)` recomputation before building warning | FIXED |
+| 98 | MEDIUM | `src/ingest.py:291-298` | Meta files deleted before overview regeneration — if `build_and_store_overview()` failed, KB lost self-awareness until next ingestion | Removed pre-deletion; `write_text()` in `build_and_store_overview()` already overwrites | FIXED |
+| 99 | MEDIUM | `src/readers/docx.py:4-10` | DOCX reader only extracted paragraphs, silently dropping all embedded tables | Added table extraction loop: `doc.tables` → row cells joined with ` \| ` | FIXED |
+
+### Known Issues Added
+
+| # | Severity | File | Description | Reason |
+|---|----------|------|-------------|--------|
+| K18 | MEDIUM | `src/sql_retriever.py:17-24` | Comment stripping is naive (regex) — corrupts string literals containing `--` or `/* */` | Rare in LLM-generated queries; proper state-machine parser would be over-engineering |
+| K19 | MEDIUM | `src/retriever.py:195-196, 267-269` | LIKE wildcard chars `%` and `_` not escaped in fallback/alt-column queries | Same as existing K7; low real-world impact |
+| K20 | MEDIUM | `src/sql_retriever.py` | No SQL execution timeout — Cartesian products could hang | Same as existing K10; SQLite lacks built-in SELECT timeout |
+| K21 | MEDIUM | `src/verifier.py:151-202` | `validate_citations` compares citation numbers against raw retrieval count, not References section entry count | Would require parsing References section to count entries; current check is conservative |
+| K22 | LOW | `src/readers/csv_tab.py:11` | CSV encoding hardcoded to `utf-8-sig` — non-UTF-8 files get replacement chars | Would need `chardet` dependency or encoding detection |
+| K23 | LOW | `src/sql_ingest.py:568-586` | Row-by-row SQL INSERT slow for large datasets | Would benefit from `executemany()` batching |
+| K24 | LOW | `src/readers/excel.py:40, csv_tab.py:22` | `zip(headers, row)` silently truncates extra columns in ragged rows | Acceptable for most research datasets |
+| K25 | LOW | `src/ingest.py:104` | `rglob("*")` follows symlinks — cyclic symlinks could cause infinite loop | Rare in knowledge_base directories |
+| K26 | LOW | Test suite | Zero coverage: `validate_citations`, verification loop, `make_fuzzy_query`, `compute_similarity_flags`, `load_kb_meta_brief` | Test gap documented; non-blocking for release |
+
+### Test Coverage Gaps (Confirmed)
+
+| Priority | What | Description |
+|----------|------|-------------|
+| HIGH | `validate_citations()` | Layer 4.5 — zero direct tests |
+| HIGH | Verification correction loop | Core feature — zero multi-iteration tests |
+| HIGH | `make_fuzzy_query()` | SQL fuzzy fallback — zero tests |
+| MEDIUM | `compute_similarity_flags()` | Layer 4 — zero tests |
+| MEDIUM | `load_kb_meta_brief()` | Used by verifier — zero tests |
+
+---
+
+## Round 12 — 2026-03-06 Session 7 (Pre-Release Final Audit)
+
+See `docs/AUDIT_BUGLOG.md` Round 12 section for full details.
+33 bugs found across 3 tiers, all FIXED. Design score raised from 7.1/10 to 9/10.
+5 NEW low-severity issues documented as KNOWN. 174/174 tests passing. **Released to GitHub.**
+
+---
+
+## Round 13 — 2026-03-07 (Post-Release Deep Audit)
+
+**7 parallel audit agents** (design evaluation + core pipeline + verification stack + SQL layer + LLM/readers/search + application layer + test coverage). Full line-by-line review of all 25 source files, 17 test files, and all documentation.
+
+**Design Score**: 8.5/10 → **9.1/10** (post-fix) | **Test Coverage Score**: 6/10
+
+### Tier 1: Anti-Hallucination Integrity (4 bugs) — ALL FIXED
+
+| # | Severity | File | Bug | Fix | Status |
+|---|----------|------|-----|-----|--------|
+| 100 | HIGH | `verifier.py` | **R13-T1-01**: Verification LLM persistent failure → `except Exception: continue` skips all iterations → non-strict returns unverified response. Full bypass of Layers 3–5. | Added `any_verification_ran` flag. If ALL verification LLM calls fail: strict mode refuses with system-failure message; non-strict adds prominent WARNING banner distinguishing "could not run" from "did not pass". | FIXED |
+| 101 | HIGH | `verifier.py` | **R13-T1-02**: `validate_citations` SQL/web source matching uses wrong dict structure (dead code). Layer 4.5 only works for local sources. | SQL: extract source filename from context via regex. Web: changed to flat dict access `web_chunk.get("url", "")`. | FIXED |
+| 102 | HIGH | `verifier.py` | **R13-T1-03**: Citation count uses unique source *files*, not citable *units*. False "fabricated reference" warning on multi-chunk single-file sources. | Changed `db_count = len(db_results)` (chunks) instead of `len(unique_db_sources)` (files). Each chunk is a citable unit. | FIXED |
+| 103 | MEDIUM | `verifier.py` | **R13-T1-04**: `max_iterations: 0` with `enabled: true` silently disables verification. | Clamp `max_iterations = max(1, max_iterations)` with warning. Must use `enabled: false` to disable. Test updated. | FIXED |
+
+### Tier 2: Pre-Release Quality (24 bugs) — ALL FIXED
+
+| # | Severity | File | Bug | Fix | Status |
+|---|----------|------|-----|-----|--------|
+| 104 | HIGH | `retriever.py` | **R13-T2-01**: Missing LIKE wildcard ESCAPE in `_build_fallback_sql_query` and `_try_alternate_columns`. | Added `%`/`_` escaping and `ESCAPE '\'` clause. Initial fix had double-backslash bug; corrected by regression checker. | FIXED |
+| 105 | HIGH | `gemini.py` | **R13-T2-02**: Gemini safety filter returns `"[Gemini blocked: ...]"` bypassing anti-hallucination stack. | Return `""` instead. Verifier's empty-response handler (lines 369-378) provides user-facing refusal. | FIXED |
+| 106 | HIGH | `openai.py` | **R13-T2-03**: Reasoning model budget uncapped → API error with large `max_tokens`. | `reasoning_budget = min(max(max_tokens * 4, 4096), 128000)`. | FIXED |
+| 107 | HIGH | `llm/__init__.py` | **R13-T2-04**: Non-numeric temperature/max_tokens crashes with opaque ValueError. | Wrapped in try/except with defaults (0.0 and 2048). | FIXED |
+| 108 | HIGH | `app_cli.py` | **R13-T2-05**: After clarification, raw `user_input` re-appended → duplicate history entries. | Use `display_query` (post-QU, includes clarification context) instead of raw `user_input`. | FIXED |
+| 109 | MEDIUM | `llm/__init__.py` | **R13-T2-06**: Anthropic temp > 1.0 → API error. | Added provider-specific clamp: `if provider == "anthropic": temperature = min(temperature, 1.0)`. | FIXED |
+| 110 | MEDIUM | `sql_retriever.py` | **R13-T2-07**: No SQL query timeout. `CROSS JOIN` hangs indefinitely. | Added `set_progress_handler` with 10-second abort. `import time` at module level. | FIXED |
+| 111 | MEDIUM | `app_cli.py` | **R13-T2-08**: Rich markup injection via brackets in error messages/queries. | Added `rich_escape()` to all 5 interpolated f-strings in the RAG pipeline loop. | FIXED |
+| 112 | MEDIUM | `readers/*.py` | **R13-T2-09**: No try/except in readers. Corrupt file aborts ingestion. | Wrapped `read_pdf`, `read_docx`, `read_excel`, `read_stata`, `read_rdata`, `read_spss` in try/except. | FIXED |
+| 113 | MEDIUM | `retriever.py`, `app_cli.py`, `app_web.py` | **R13-T2-10**: `_collection_cache` never invalidated after re-ingestion. | Added `clear_collection_cache()` function; called after ingestion in both CLI and web. | FIXED |
+| 114 | MEDIUM | `app_web.py` | **R13-T2-11**: Web UI messages grow without limit. | Capped at 200 entries (100 Q&A pairs) after each append cycle. | FIXED |
+| 115 | MEDIUM | `setup.py` | **R13-T2-12**: Setup wizard overwrites config without confirmation. | Added existence check + `[y/N]` prompt before overwriting `config.yaml`. | FIXED |
+| 116 | MEDIUM | `prompts.py` | **R13-T2-13**: Prompt injection via KB delimiter mimicry. | Sanitize context: replace 69-char `=` sequences with Unicode `≡` before injection. | FIXED |
+| 117 | MEDIUM | `verifier.py` | **R13-T2-14**: References regex matches `## Data Sources` etc. | Anchored regex with `\s*$` to require standalone headers only. | FIXED |
+| 118 | MEDIUM | `verifier.py` | **R13-T2-15**: Correction prompt includes full previous response. | Truncate to 1500 chars. Instruction: "Rewrite COMPLETE response from scratch". | FIXED |
+| 119 | MEDIUM | `verifier.py` | **R13-T2-16**: Initial `generate()` exception propagates. | Wrapped in try/except; returns `refused: True` with error message. | FIXED |
+| 120 | MEDIUM | `openai.py` | **R13-T2-17**: Reasoning model detection via brittle prefix match. | Changed to `model in ("o1","o3","o4") or model.startswith(("o1-","o3-","o4-"))`. | FIXED |
+| 121 | MEDIUM | `sql_retriever.py` | **R13-T2-18**: `make_fuzzy_query` regex matches non-column contexts. | Pattern now requires quoted identifiers or valid SQL column names. | FIXED |
+| 122 | MEDIUM | `sql_retriever.py` | **R13-T2-19**: `REPLACE()` function falsely blocked. | Removed `REPLACE` from `_DANGEROUS_KEYWORDS`. Statement form blocked by SELECT-only check. | FIXED |
+| 123 | MEDIUM | `config_loader.py` | **R13-T2-20**: Non-dict YAML → `AttributeError`. | Added `isinstance(cfg, dict)` check with clear ValueError message. | FIXED |
+| 124 | MEDIUM | `app_web.py` | **R13-T2-21**: Model list cache stale after provider change. | Added provider-change detection that clears all model caches. | FIXED |
+| 125 | MEDIUM | `app_web.py` | **R13-T2-22**: Web UI uses slow LLM call for KB welcome. | Changed to `load_kb_meta_brief()` (file read) matching CLI behavior. | FIXED |
+| 126 | MEDIUM | `app_web.py` | **R13-T2-23**: Re-ingestion blocks without progress feedback. | Added `st.info()` message before spinner to set expectations. | FIXED |
+| 127 | MEDIUM | `setup.py` | **R13-T2-24**: Empty API key warning not actionable. | Improved message: "Set it later by editing .env or re-running: python setup.py". | FIXED |
+
+### Tier 3: Post-Release Improvements (20 bugs)
+
+| # | Severity | File | Bug | Status |
+|---|----------|------|-----|--------|
+| 128 | MED | `openai.py:9`, `anthropic.py:9`, `gemini.py:16` | **R13-T3-01**: New API client per `generate()` call. No connection reuse. | OPEN |
+| 129 | MED | `llm/openai.py:52`, `anthropic.py:32`, `gemini.py:48` | **R13-T3-02**: `list_models()` returns hardcoded list, not live API fetch. Design doc says otherwise. | OPEN |
+| 130 | MED | `retriever.py:282-285` | **R13-T3-03**: `_try_alternate_columns` quote escaping logic fragile and non-obvious. | OPEN |
+| 131 | MED | `sql_retriever.py:54` | **R13-T3-04**: `sqlite_master` check on `stripped` instead of `unquoted`. False positives. | OPEN |
+| 132 | MED | `readers/stata.py:28`, `rdata.py:15` | **R13-T3-05**: `df.iterrows()` 10-100x slower than `itertuples()`. Large datasets take minutes. | OPEN |
+| 133 | LOW | `sql_retriever.py:26-33` | **R13-T3-06**: `_strip_sql_comments` removes `--` inside string literals. Confirmed from R12 NEW-04. | OPEN |
+| 134 | LOW | `verifier.py:429` | **R13-T3-07**: Verification LLM system prompt minimal. No anti-hallucination rules for verifier itself. | OPEN |
+| 135 | LOW | `verifier.py:25-34` | **R13-T3-08**: Warning phrases easily evaded by paraphrasing. Only 8 exact-match phrases. | OPEN |
+| 136 | LOW | `verifier.py:126` | **R13-T3-09**: Term overlap excludes 2-char acronyms (AI, UK, EU, US, UN). | OPEN |
+| 137 | LOW | `verifier.py:181` | **R13-T3-10**: Citation `[0]` never detected as invalid. | OPEN |
+| 138 | LOW | `readers/csv_tab.py:11`, `text.py:5` | **R13-T3-11**: Hardcoded UTF-8. Non-UTF-8 files get replacement chars. | OPEN |
+| 139 | LOW | `readers/docx.py:24` | **R13-T3-12**: All DOCX content mapped to `page: 1`. | OPEN |
+| 140 | LOW | `readers/pdf.py:9` | **R13-T3-13**: Scanned PDFs silently return empty list. No warning. | OPEN |
+| 141 | LOW | `readers/excel.py:15` | **R13-T3-14**: Unevaluated formulas appear as `None`, silently dropped. | OPEN |
+| 142 | LOW | `search/semantic_scholar.py:15-28` | **R13-T3-15**: Retries on non-retriable 4xx errors. Wastes 17s. | OPEN |
+| 143 | LOW | `search/__init__.py:10-12` | **R13-T3-16**: Unknown backend names silently return `[]`. | OPEN |
+| 144 | LOW | `setup.py:96-100` | **R13-T3-17**: `.env` unescape wrong order. Theoretical corruption. | OPEN |
+| 145 | LOW | `config_loader.py:20-22` | **R13-T3-18**: `.env` loaded before config existence check. | OPEN |
+| 146 | LOW | `app_web.py:288` | **R13-T3-19**: Browser tab title hardcoded "ResearchBot". | OPEN |
+| 147 | LOW | `verifier.py:460-462` | **R13-T3-20**: Correction call uses same temperature as initial. Should force 0.0. | OPEN |
+
+### Test Coverage Gaps (Round 13 — confirmed + expanded)
+
+| Priority | What | File | Status |
+|----------|------|------|--------|
+| CRITICAL | `validate_citations()` — Layer 4.5 | `verifier.py:152-230` | OPEN |
+| CRITICAL | Verification correction loop | `verifier.py:407-520` | OPEN |
+| CRITICAL | `make_fuzzy_query()` | `sql_retriever.py:181-237` | OPEN |
+| HIGH | `compute_similarity_flags()` — Layer 4 | `verifier.py:101-149` | OPEN |
+| HIGH | `_strip_quoted()` / `_strip_sql_comments()` | `sql_retriever.py:17-33` | OPEN |
+| HIGH | Empty LLM response in `verify_and_respond` | `verifier.py:354-364` | OPEN |
+| HIGH | `build_and_store_overview()` orchestrator | `kb_meta.py:464-492` | OPEN |
+| MEDIUM | `generate_brief_overview()` | `kb_meta.py:385-422` | OPEN |
+| MEDIUM | `load_kb_meta_brief()` fallback | `kb_meta.py:434-445` | OPEN |
+| MEDIUM | `summarize_kb_for_welcome()` | `kb_meta.py:514-552` | OPEN |
+| MEDIUM | `_build_fallback_sql_query` with real data | `retriever.py:159-217` | OPEN |
+| MEDIUM | `_try_alternate_columns` with real data | `retriever.py:220-292` | OPEN |
+| MEDIUM | `_validate_sql` edge cases | `sql_retriever.py:36-59` | OPEN |
+| MEDIUM | `format_sql_results_as_context` truncation | `sql_retriever.py:116-167` | OPEN |
+| MEDIUM | `_normalize_nulls` | `config_loader.py:36-42` | OPEN |
+
+### Cross-Agent Consensus (confirmed by 2+ agents independently)
+
+| Bug | Agents | Confidence |
+|-----|--------|-----------|
+| `validate_citations` dead code for SQL + web (#101) | Core Pipeline, Application, Verification | **Very High** |
+| Missing LIKE ESCAPE in SQL fallbacks (#104) | SQL, Core Pipeline, Design | **Very High** |
+| Stale `_collection_cache` after re-ingestion (#113) | Core Pipeline, Design | **High** |
+| Verification LLM failure → silent bypass (#100) | Verification, Core Pipeline | **High** |
+| Missing reader exception handling (#112) | LLM/Readers, Design | **High** |
+
+### Recommended Fix Order
+
+**Phase 1 — Anti-hallucination integrity (#100–#103):**
+Fix verification bypass, validate_citations data structure, citation counting, max_iterations guard.
+
+**Phase 2 — High-severity T2 bugs (#104–#108):**
+LIKE ESCAPE, Gemini blocked response, reasoning model overflow, config validation, history corruption.
+
+**Phase 3 — Test coverage (3 CRITICAL gaps):**
+Tests for validate_citations, verification correction loop, make_fuzzy_query.
+
+**Phase 4 — Remaining T2 MEDIUM bugs (#109–#127):**
+Address in order of impact.
+
+**Phase 5 — T3 improvements (#128–#147):**
+Address as time permits.
+
+---
+
+## Round 14 — 2026-03-07 (Tier 1 + Tier 2 Bug Fix Sprint)
+
+**6 parallel agents**: 4 fix agents (T1, T2-HIGH, T2-MED-A, T2-MED-B) + 1 regression checker + 1 design guardian.
+
+- Fixed all 28 Tier 1 + Tier 2 bugs (#100–#127)
+- Regression checker found 1 CRITICAL issue in Bug #104 fix (double-backslash in ESCAPE clause) — corrected
+- Also fixed `spss.py` missing try/except (pre-existing gap found by regression checker)
+- Design Guardian assessment: design score 8.5 → 9.1/10, recommendation: SHIP
+- Updated test for Bug #103 (renamed to `test_max_iterations_zero_clamps_to_one`)
+- 174/174 tests passing
+
+---
+
 ## Statistics
 
 | Metric | Count |
 |--------|-------|
-| Total bugs fixed | ~119 (3 this round) |
-| Audit rounds completed | 10 (10 sessions, 30+ total agent dispatches) |
+| Total bugs found (all rounds) | ~216 (48 new in Round 13) |
+| Total bugs fixed (all rounds) | ~196 (168 in R1–R12, 28 in R14) |
+| Round 13 T1+T2 bugs | 28 FIXED (was 28 OPEN) |
+| Round 13 T3 bugs remaining | 20 OPEN (5 MEDIUM, 15 LOW) |
+| Audit rounds completed | 14 (50+ total agent dispatches) |
 | Test count | 174 passing |
 | Test files | 17 |
-| Source files audited | All 20+ |
-| Known issues remaining | 17 (0 CRITICAL, 1 HIGH, 6 MEDIUM, 10 LOW) |
+| Source files modified in R14 | 16 (verifier, retriever, gemini, openai, llm/__init__, app_cli, app_web, sql_retriever, config_loader, prompts, setup, pdf, docx, excel, stata, rdata, spss) |
+| Design score | 9.1/10 (up from 8.5) |
+| CRITICAL test gaps | 3 (validate_citations, correction loop, make_fuzzy_query) |

@@ -2,9 +2,13 @@
 MAX_CHUNK_CHARS = 6000
 
 def read_stata(file_path: str) -> list[dict]:
-    import pyreadstat
-    df, meta = pyreadstat.read_dta(file_path)
-    return _dataframe_to_pages(df, meta)
+    try:
+        import pyreadstat
+        df, meta = pyreadstat.read_dta(file_path)
+        return _dataframe_to_pages(df, meta)
+    except Exception as e:
+        print(f"Warning: Could not read {file_path}: {e}")
+        return []
 
 def _dataframe_to_pages(df, meta) -> list[dict]:
     pages = []

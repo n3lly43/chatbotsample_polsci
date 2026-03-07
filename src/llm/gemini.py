@@ -30,8 +30,8 @@ def generate(system_prompt: str, user_message: str, api_key: str,
             return ""
         return response.text
     except ValueError as e:
-        # Safety filter block
-        return f"[Gemini blocked: {e}]"
+        # Safety filter block — return empty so verifier treats it as generation failure
+        return ""
     except Exception as e:
         error_type = type(e).__name__
         error_msg = str(e)

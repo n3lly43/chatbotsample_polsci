@@ -3,6 +3,7 @@
 import sys
 
 from rich.console import Console
+from rich.markup import escape as rich_escape
 from rich.panel import Panel
 from rich.markdown import Markdown
 from rich.text import Text
@@ -11,7 +12,7 @@ from src.config_loader import load_config, get_api_key
 from src.ingest import ingest_documents
 from src.kb_meta import load_kb_meta_brief
 from src.query_engine import understand_query
-from src.retriever import retrieve
+from src.retriever import clear_collection_cache, retrieve
 from src.verifier import verify_and_respond
 from src.llm import list_models
 
@@ -256,9 +257,10 @@ def main() -> None:
             with console.status("Ingesting documents..."):
                 try:
                     count = ingest_documents(cfg)
+                    clear_collection_cache()
                     console.print(f"[green]Ingestion complete: {count} chunks.[/green]")
                 except Exception as e:
-                    console.print(f"[red]Ingestion error: {e}[/red]")
+                    console.print(f"[red]Ingestion error: {rich_escape(str(e))}[/red]")
             continue
 
         if result == "__MODEL__":
@@ -301,7 +303,7 @@ def main() -> None:
                         state.get("conversation_history", []),
                     )
                 except Exception as e:
-                    console.print(f"[yellow]Query understanding failed, using raw query: {e}[/yellow]")
+                    console.print(f"[yellow]Query understanding failed, using raw query: {rich_escape(str(e))}[/yellow]")
                     qu_result = {"action": "search", "search_query": user_input, "display_query": user_input, "original_query": user_input, "route": "vector", "sql_query": None}
 
             # Handle clarification
@@ -344,7 +346,7 @@ def main() -> None:
 
             # Show reformulated query if different from original
             if search_query != user_input:
-                console.print(f"[dim]Searching for: \"{search_query}\"[/dim]")
+                console.print(f"[dim]Searching for: \"{rich_escape(search_query)}\"[/dim]")
             if route in ("sql", "both"):
                 console.print(f"[dim]Using SQL query for structured data[/dim]")
 
@@ -353,7 +355,7 @@ def main() -> None:
             try:
                 retrieval_result = retrieve(search_query, effective_cfg, route=route, sql_query=sql_query)
             except Exception as e:
-                console.print(f"[red]Retrieval error: {e}[/red]")
+                console.print(f"[red]Retrieval error: {rich_escape(str(e))}[/red]")
                 continue
 
         state["last_retrieval"] = retrieval_result
@@ -366,13 +368,17 @@ def main() -> None:
                     original_query=user_input,
                 )
             except Exception as e:
-                console.print(f"[red]Generation error: {e}[/red]")
+                console.print(f"[red]Generation error: {rich_escape(str(e))}[/red]")
                 continue
 
         # ── Update conversation history ─────────────────────────────────
         history = state.get("conversation_history", [])
         max_history = qu_cfg.get("max_history", 6)
-        history.append({"role": "user", "content": user_input})
+        # Use display_query (post-QU) as the user message for history,
+        # since it captures clarification context and avoids duplicating
+        # the raw user_input that clarification already added.
+        effective_user_msg = display_query if display_query != user_input else user_input
+        history.append({"role": "user", "content": effective_user_msg})
         history.append({"role": "assistant", "content": result.get("response", "")})
         state["conversation_history"] = history[-max_history:]
 

@@ -2,11 +2,15 @@
 MAX_CHUNK_CHARS = 6000
 
 def read_excel(file_path: str) -> list[dict]:
-    from pathlib import Path
-    ext = Path(file_path).suffix.lower()
-    if ext == ".xls":
-        return _read_xls(file_path)
-    return _read_xlsx(file_path)
+    try:
+        from pathlib import Path
+        ext = Path(file_path).suffix.lower()
+        if ext == ".xls":
+            return _read_xls(file_path)
+        return _read_xlsx(file_path)
+    except Exception as e:
+        print(f"Warning: Could not read {file_path}: {e}")
+        return []
 
 def _read_xlsx(file_path: str) -> list[dict]:
     import openpyxl

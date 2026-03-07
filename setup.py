@@ -141,7 +141,8 @@ def run_wizard():
     # Step 3b: API key
     api_key = getpass.getpass(f"Enter your {provider} API key: ")
     if not api_key:
-        print(f"  Warning: No API key entered for {provider}. You can set it later in .env")
+        print(f"  Warning: No API key entered for {provider}.")
+        print(f"  Set it later by editing .env or re-running: python setup.py")
 
     # Step 4: Model selection — fetch available models
     print(f"\nFetching available {provider} models...")
@@ -179,9 +180,18 @@ def run_wizard():
 
     # Write config.yaml
     config_path = project_root / "config.yaml"
-    config_str = generate_config(bot_name, domain, provider, model, web_search)
-    config_path.write_text(config_str)
-    print(f"\n  Wrote {config_path}")
+    if config_path.exists():
+        overwrite = input(f"\n{config_path} already exists. Overwrite? [y/N]: ").strip().lower()
+        if overwrite != 'y':
+            print("  Keeping existing config.yaml.")
+        else:
+            config_str = generate_config(bot_name, domain, provider, model, web_search)
+            config_path.write_text(config_str)
+            print(f"\n  Wrote {config_path}")
+    else:
+        config_str = generate_config(bot_name, domain, provider, model, web_search)
+        config_path.write_text(config_str)
+        print(f"\n  Wrote {config_path}")
 
     # Write .env (merges with existing keys if present)
     env_path = project_root / ".env"

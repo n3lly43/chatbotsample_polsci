@@ -7,12 +7,12 @@ def generate(system_prompt: str, user_message: str, api_key: str,
     model = model or "gpt-4o"
     from openai import OpenAI
     client = OpenAI(api_key=api_key)
-    is_reasoning = model.startswith(("o1", "o3", "o4"))
+    is_reasoning = model in ("o1", "o3", "o4") or model.startswith(("o1-", "o3-", "o4-"))
     try:
         if is_reasoning:
             # Reasoning models include thinking tokens in max_completion_tokens,
             # so we need a larger budget to get enough output tokens.
-            reasoning_budget = max(max_tokens * 4, 4096)
+            reasoning_budget = min(max(max_tokens * 4, 4096), 128000)
             messages = [
                 {"role": "developer", "content": system_prompt},
                 {"role": "user", "content": user_message},

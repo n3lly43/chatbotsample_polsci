@@ -4,9 +4,9 @@ import streamlit as st
 
 from src.config_loader import load_config, get_api_key
 from src.ingest import get_chroma_collection, ingest_documents
-from src.kb_meta import summarize_kb_for_welcome
+from src.kb_meta import load_kb_meta_brief
 from src.query_engine import understand_query
-from src.retriever import retrieve
+from src.retriever import clear_collection_cache, retrieve
 from src.verifier import verify_and_respond
 from src.llm import list_models
 
@@ -59,6 +59,13 @@ def render_sidebar():
             cfg.setdefault("llm", {})["provider"] = provider
 
         # --- Model dropdown (cached per provider) ---
+        # Invalidate model cache if provider changed
+        prev_provider_key = "prev_provider"
+        if st.session_state.get(prev_provider_key) != provider:
+            for p in providers:
+                st.session_state.pop(f"models_{p}", None)
+            st.session_state[prev_provider_key] = provider
+
         models_cache_key = f"models_{provider}"
         if models_cache_key not in st.session_state:
             api_key = get_api_key(cfg, provider)
@@ -115,9 +122,11 @@ def render_sidebar():
 
         # --- Re-ingest button ---
         if st.button("Re-ingest documents", use_container_width=True):
+            st.info("Ingestion may take a few minutes for large document collections...")
             with st.spinner("Ingesting documents..."):
                 try:
                     count = ingest_documents(cfg)
+                    clear_collection_cache()
                     st.success(f"Ingested {count} chunks.")
                     # Clear cached data so it refreshes after re-ingest
                     st.session_state.pop("kb_welcome_summary", None)
@@ -279,6 +288,11 @@ def render_chat():
             {"role": "assistant", "content": result.get("response", "")}
         )
 
+        # Cap message history to prevent unbounded memory growth
+        max_messages = 200  # 100 Q&A pairs
+        if len(st.session_state.messages) > max_messages:
+            st.session_state.messages = st.session_state.messages[-max_messages:]
+
 
 # ── Main ─────────────────────────────────────────────────────────────────────
 
@@ -300,7 +314,7 @@ def main():
     # Show KB summary on first visit (LLM-generated welcome summary)
     if not st.session_state.messages:
         if "kb_welcome_summary" not in st.session_state:
-            st.session_state.kb_welcome_summary = summarize_kb_for_welcome(cfg)
+            st.session_state.kb_welcome_summary = load_kb_meta_brief(cfg)
         kb_summary = st.session_state.kb_welcome_summary
         if kb_summary:
             with st.expander("Knowledge Base Contents", expanded=True):

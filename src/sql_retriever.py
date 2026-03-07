@@ -3,12 +3,13 @@
 import os
 import re
 import sqlite3
+import time
 from pathlib import Path
 
 
 _DANGEROUS_KEYWORDS = re.compile(
     r"\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|ATTACH|DETACH|PRAGMA|"
-    r"LOAD_EXTENSION|UNION|REPLACE|VACUUM|REINDEX|SAVEPOINT|RELEASE|"
+    r"LOAD_EXTENSION|UNION|VACUUM|REINDEX|SAVEPOINT|RELEASE|"
     r"ROLLBACK|BEGIN|COMMIT|GRANT|REVOKE|EXPLAIN|WITH)\b",
     re.IGNORECASE,
 )
@@ -101,9 +102,16 @@ def execute_sql_query(sql_query: str, cfg: dict) -> list[dict]:
     max_rows = cfg.get("sql", {}).get("max_rows", 200)
 
     try:
-        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=5)
         try:
             conn.row_factory = sqlite3.Row
+            # Abort long-running queries after 10 seconds
+            _start = time.monotonic()
+            def _progress_check():
+                if time.monotonic() - _start > 10:
+                    return 1  # non-zero = abort
+                return 0
+            conn.set_progress_handler(_progress_check, 10000)
             cursor = conn.execute(sql_query)
             rows = cursor.fetchmany(max_rows)
             return [dict(row) for row in rows]
@@ -195,7 +203,7 @@ def make_fuzzy_query(sql: str, word_level: bool = False) -> str | None:
     Returns the modified query, or None if no substitutions were made.
     """
     pattern = re.compile(
-        r"""(["']?\w+["']?\s*)=\s*'([^']+)'""",
+        r"""("[^"]+"\s*|[A-Za-z_]\w*\s*)=\s*'([^']+)'""",
     )
 
     if not word_level:

@@ -160,14 +160,13 @@ def validate_citations(response: str, retrieval_result: dict) -> list[str]:
     """
     warnings = []
 
-    # Count unique source documents (not raw chunks)
+    # Count citable units — each retrieved chunk is a separate citable
+    # reference that the LLM may cite as [1], [2], etc.  Counting unique
+    # *files* instead would trigger false "fabricated reference" warnings
+    # when a single file contributes multiple chunks (e.g., a PDF cited
+    # as [1]–[10] for 10 different sections).
     db_results = retrieval_result.get("db_results", [])
-    unique_db_sources = set()
-    for chunk in db_results:
-        source = chunk.get("metadata", {}).get("source", "")
-        if source:
-            unique_db_sources.add(source)
-    db_count = len(unique_db_sources) if unique_db_sources else (1 if db_results else 0)
+    db_count = len(db_results)
     web_count = len(retrieval_result.get("web_results", []))
     sql_count = 1 if retrieval_result.get("sql_results") else 0
     total_sources = db_count + web_count + sql_count
@@ -176,7 +175,7 @@ def validate_citations(response: str, retrieval_result: dict) -> list[str]:
         return warnings
 
     # Extract citation numbers from response BODY only (not References section)
-    refs_split = re.split(r'(?im)^#+\s*(references|sources)\b|^\*\*(references|sources)\*\*', response)
+    refs_split = re.split(r'(?im)^#+\s*(?:references|sources)\s*$|^\*\*(?:references|sources)\*\*\s*$', response)
     body_text = refs_split[0] if refs_split else response
     citation_nums = set(int(m) for m in re.findall(r"\[(\d+)\]", body_text))
     if not citation_nums:
@@ -191,7 +190,7 @@ def validate_citations(response: str, retrieval_result: dict) -> list[str]:
 
     # Check that source file names from retrieval appear in the References section
     refs_match = re.search(
-        r"(?im)(^#+\s*(references|sources)\b|^\*\*(references|sources)\*\*).*",
+        r"(?im)(?:^#+\s*(?:references|sources)\s*$|^\*\*(?:references|sources)\*\*\s*$).*",
         response, re.DOTALL,
     )
     if refs_match:
@@ -204,18 +203,25 @@ def validate_citations(response: str, retrieval_result: dict) -> list[str]:
                 filename = source.rsplit("/", 1)[-1].lower()
                 if filename in refs_text:
                     matched_sources += 1
-        # Also check SQL source files
+        # Also check SQL source — SQL results are plain row dicts (no
+        # metadata wrapper).  All rows come from a single table/source file
+        # whose name is embedded in the context as "Source: <filename>".
+        # Extract it from the combined context instead of iterating rows.
         sql_results = retrieval_result.get("sql_results", [])
-        for sql_chunk in sql_results:
-            sql_source = sql_chunk.get("metadata", {}).get("source", "")
-            if sql_source:
-                sql_filename = sql_source.rsplit("/", 1)[-1].lower()
+        if sql_results:
+            context_text = retrieval_result.get("context", "")
+            sql_source_match = re.search(
+                r"Source:\s*(.+)", context_text,
+            )
+            if sql_source_match:
+                sql_filename = sql_source_match.group(1).strip().rsplit("/", 1)[-1].lower()
                 if sql_filename in refs_text:
                     matched_sources += 1
-        # Also check web source URLs
+        # Also check web source URLs — web results are flat dicts with
+        # a top-level "url" key (no metadata wrapper).
         web_results = retrieval_result.get("web_results", [])
         for web_chunk in web_results:
-            web_url = web_chunk.get("metadata", {}).get("url", "")
+            web_url = web_chunk.get("url", "")
             if web_url and web_url.lower() in refs_text:
                 matched_sources += 1
         # Only warn when db_results are present and are the primary source
@@ -349,7 +355,15 @@ def verify_and_respond(
         user_message = query
 
     # ── Generate initial response ─────────────────────────────────────────
-    response = generate(system_prompt, user_message, cfg, max_tokens=soft_max)
+    try:
+        response = generate(system_prompt, user_message, cfg, max_tokens=soft_max)
+    except Exception as e:
+        return {
+            "response": f"An error occurred while generating the response: {e}",
+            "refused": True,
+            "verification_passed": None,
+            "iterations": 0,
+        }
 
     # ── Guard: empty response from LLM ────────────────────────────────────
     if not response or not response.strip():
@@ -393,19 +407,18 @@ def verify_and_respond(
     max_iterations = verification_cfg.get("max_iterations", 3)
     strict_mode = verification_cfg.get("strict_mode", True)
 
-    # Guard: max_iterations=0 with enabled=true → skip verification
+    # Guard: max_iterations=0 with enabled=true → clamp to 1.
+    # Verification cannot be bypassed via iteration count alone;
+    # users must explicitly set verification.enabled: false.
     if max_iterations <= 0:
-        print("WARNING: Verification iterations set to 0. "
-              "Anti-hallucination verification is effectively disabled.")
-        return {
-            "response": response,
-            "refused": False,
-            "verification_passed": None,
-            "iterations": 0,
-        }
+        print("WARNING: Verification iterations set to 0 but verification "
+              "is enabled. Clamping to 1 iteration. To disable verification, "
+              "set verification.enabled: false.")
+        max_iterations = 1
 
     # ── Verification loop ─────────────────────────────────────────────────
     initial_response = response
+    any_verification_ran = False  # Track whether ANY verification call succeeded
     for iteration in range(1, max_iterations + 1):
         # Layer 5: Warning-phrase scan
         phrase_flags = scan_warning_phrases(response)
@@ -434,6 +447,7 @@ def verify_and_respond(
         except Exception:
             # Verification LLM failed — skip correction, continue to next iteration
             continue
+        any_verification_ran = True
         vr = parse_verification_result(raw_verification)
 
         if vr.get("pass", False):
@@ -448,14 +462,16 @@ def verify_and_respond(
         error_count = vr.get("error_count", len(vr.get("errors", [])))
 
         # Correct and loop for re-verification
+        # Truncate previous response to reduce prompt competition with context
+        truncated_response = response[:1500] + "..." if len(response) > 1500 else response
         correction_prompt = (
             f"The user's original question was: {query}\n\n"
-            f"Your previous response was:\n{response}\n\n"
+            f"Your previous response (truncated for brevity):\n{truncated_response}\n\n"
             f"This response failed verification with "
             f"{error_count} error(s):\n"
             + json.dumps(vr.get("errors", []), indent=2)
-            + "\n\nRewrite your response to fix ALL the issues listed above. "
-            "Use ONLY the provided context. Keep all citation rules."
+            + "\n\nRewrite your COMPLETE response from scratch to fix ALL the issues "
+            "listed above. Use ONLY the provided context. Keep all citation rules."
         )
         try:
             response = generate(
@@ -484,6 +500,7 @@ def verify_and_respond(
                 "You are a strict verification agent. Return only JSON.",
                 vp, cfg, max_tokens=1024,
             ))
+            any_verification_ran = True
         except Exception:
             vr = {"pass": False, "errors": [], "error_count": 0}
         if vr.get("pass", False):
@@ -494,7 +511,39 @@ def verify_and_respond(
                 "iterations": max_iterations,
             }
 
-    # ── Exhausted iterations ──────────────────────────────────────────────
+    # ── Handle total verification system failure ──────────────────────────
+    # If ALL verification LLM calls failed (not "didn't pass" — actually
+    # failed to run), this is a system failure, not a content-quality issue.
+    if not any_verification_ran:
+        print("ERROR: All verification LLM calls failed. "
+              "Verification could not run at all.")
+        if strict_mode:
+            return {
+                "response": (
+                    "Verification was unable to run due to repeated LLM "
+                    "errors. To avoid presenting unverified information, "
+                    "I must decline to answer. Please check your LLM "
+                    "configuration and try again."
+                ),
+                "refused": True,
+                "verification_passed": False,
+                "iterations": max_iterations,
+            }
+        # Non-strict: return with a prominent system-failure warning
+        warning = (
+            "\n\n---\n**WARNING: Verification system failure.** "
+            "The verification pipeline was unable to run due to "
+            "repeated LLM errors. This response has NOT been verified "
+            "at all — treat all claims as unverified."
+        )
+        return {
+            "response": response + warning,
+            "refused": False,
+            "verification_passed": False,
+            "iterations": max_iterations,
+        }
+
+    # ── Exhausted iterations (verification ran but never passed) ──────────
     if strict_mode:
         return {
             "response": REFUSAL_AFTER_VERIFICATION,
