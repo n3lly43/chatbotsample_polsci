@@ -2,13 +2,39 @@
 
 A **citation-verified research assistant chatbot** that answers questions using your own documents -- PDFs, Word files, spreadsheets, datasets, and more. Every answer cites its sources with numbered references, and a 7-layer verification system ensures the chatbot never makes things up.
 
-**Built for researchers.** No coding experience required. You provide your documents, choose an AI provider, and the chatbot does the rest.
+**Built for social scientists.** Drop your documents in a folder, provide an API key, and get a research chatbot with strong anti-hallucination guardrails. No coding experience required.
+
+---
+
+## Why This Template
+
+Most AI chatbots hallucinate freely -- they generate plausible-sounding answers with no source trail. That is unacceptable for research, grant deliverables, and public-facing tools where every claim must be traceable. This template solves that problem.
+
+**What makes this different from ChatGPT, Perplexity, or off-the-shelf RAG tools:**
+
+- **Your documents are the only authority.** The chatbot answers exclusively from your knowledge base. It cannot draw on its training data. If your documents don't cover the question, it refuses to answer.
+- **Every claim is cited and verified.** A 7-layer verification stack audits every response before showing it to you. Unsupported claims get caught and corrected automatically.
+- **It understands structured data.** Tabular files (Stata `.dta`, SPSS `.sav`, R `.rds`, CSV, Excel) are loaded into a SQL database. Ask "how many campaigns succeeded after 2000?" and the chatbot writes and executes a real SQL query against your data -- not a fuzzy text search.
+- **It reads the formats social scientists actually use.** 15 file types including Stata, SPSS, R data, do-files, and codebooks.
+- **It is a starting point, not a black box.** Every component is modular and documented. You can swap AI providers, add new file readers, change the verification logic, or extend the retrieval strategy. Fork it and make it yours.
+
+### Who Is This For
+
+| You are a... | You could use this for... |
+|---|---|
+| **Researcher** | A personal assistant that knows your entire literature collection and datasets. Ask it questions while writing, and every answer comes with page-level citations you can verify. |
+| **PI or lab director** | A shared knowledge base chatbot for your research group. Load your lab's published papers, datasets, and codebooks so RAs and collaborators can query them conversationally. |
+| **Grant applicant** | A deliverable for NSF, NIH, or foundation grants. "We will build an AI-powered research tool that..." -- this template gives you a working prototype with citation verification, dual retrieval, and a documented architecture you can describe in a proposal. |
+| **Course instructor** | A teaching assistant chatbot grounded in your course readings. Students ask questions; the chatbot answers only from assigned materials with full citations. |
+| **Policy organization** | A public-facing tool that lets stakeholders query your reports and data. The anti-hallucination stack ensures the chatbot never misrepresents your findings. |
+| **Data repository maintainer** | A conversational interface to your datasets. Users can ask natural-language questions about variables, coverage, and summary statistics instead of reading codebooks. |
 
 ---
 
 ## Table of Contents
 
 - [What This Does](#what-this-does)
+- [Sample Design Logic](#sample-design-logic)
 - [Prerequisites](#prerequisites)
 - [Quick Start (Step by Step)](#quick-start-step-by-step)
 - [Supported File Formats](#supported-file-formats)
@@ -95,6 +121,101 @@ out of 31 total nonviolent campaigns in that period [1].
 [1] SQL query on navco__navco_2_0_data_csv
     -- knowledge_base/NAVCO/navco_2.0_data.csv
 ```
+
+---
+
+## Sample Design Logic
+
+> **This section is written as a design rationale** -- the kind of description you would include in a grant proposal, technical appendix, or project documentation to explain *why* the system is built the way it is. Feel free to adapt this language for your own proposals.
+
+### The Problem
+
+Large language models (LLMs) are powerful text generators, but they hallucinate: they produce fluent, confident statements that have no basis in fact. In a research context, this is not a minor inconvenience -- it is a disqualifying flaw. A chatbot that fabricates citations, invents statistics, or misrepresents findings is worse than useless; it actively undermines the scholarly record.
+
+The core challenge is: **How do you harness the natural-language capabilities of LLMs while guaranteeing that every claim is grounded in verifiable source material?**
+
+### Design Principle: Defense in Depth
+
+This template treats anti-hallucination as a **systems problem**, not a prompt-engineering trick. No single technique reliably prevents hallucination. Instead, the system layers seven independent verification mechanisms so that a failure at any one layer is caught by another:
+
+```
+Layer 0  No-source gate         If retrieval finds nothing, the LLM is never called.
+                                The user gets a refusal, not a guess. [FREE]
+
+Layer 1  System prompt           Strict instructions: "Use ONLY the provided sources.
+                                 Never draw on your training data." [FREE]
+
+Layer 2  Response length cap     Shorter context → shorter answer → less room to
+                                 hallucinate. Token limit scales with evidence. [FREE]
+
+Layer 3  LLM self-verification   A second LLM call audits the response against the
+                                 sources using a 10-point checklist. If it finds
+                                 unsupported claims, the response is corrected and
+                                 re-audited (up to 3 iterations). [1-3 LLM CALLS]
+
+Layer 4  Term-overlap check      For each cited claim, measures what fraction of
+                                 content words actually appear in the cited source.
+                                 Flags claims with <40% overlap. [FREE]
+
+Layer 4.5 Citation audit         Deterministic check: Do citation numbers exceed
+                                  the number of available sources? Do References
+                                  mention actual filenames from the knowledge base? [FREE]
+
+Layer 5  Warning-phrase scanner  Scans for telltale phrases like "based on my
+                                 knowledge" or "it is well known" that signal the
+                                 LLM is drawing on training data. [FREE]
+```
+
+Layers 0, 1, 2, 4, 4.5, and 5 are **deterministic and free** -- they require no additional LLM calls. Layer 3 is the expensive layer (1--3 extra calls per query), but it is also the most powerful: it can catch subtle hallucinations that deterministic checks miss, and it can *correct* them in place.
+
+This layered architecture means the system degrades gracefully. Even if Layer 3 (LLM verification) makes an error, Layers 4, 4.5, and 5 provide independent sanity checks. Even if all post-generation layers fail, Layer 0 guarantees the LLM was never called without evidence in the first place.
+
+### Design Principle: Dual Retrieval for Mixed Questions
+
+Social science research involves both **conceptual questions** ("What does the success variable mean?") and **data questions** ("How many campaigns succeeded after 2000?"). These require fundamentally different retrieval strategies:
+
+| Question type | Retrieval strategy | Why |
+|---|---|---|
+| Conceptual | Vector similarity search against document chunks | Finds passages that are *semantically similar* to the question, even if they use different words |
+| Data/quantitative | SQL query against structured tables | Exact filtering, aggregation, and counting -- things vector search cannot do |
+| Mixed | Both, merged | "Explain the success coding and show success rates by decade" needs the codebook AND the data |
+
+The query understanding layer uses the LLM to classify each question and route it to the right strategy. If the chosen strategy returns nothing, the system automatically falls back to the other. This dual path means a single chatbot can handle the full range of questions a researcher would ask about a dataset and its documentation.
+
+### Design Principle: Schema Enrichment
+
+Raw column names in datasets (e.g., `camp_type`, `viol_camp`, `success`) are meaningless to an LLM without context. During ingestion, the system:
+
+1. **Detects codebook files** in the same directory as each dataset (files named "codebook", "dictionary", "readme", etc.)
+2. **Reads the codebook** and passes it to the LLM along with column names, types, and sample values
+3. **Generates human-readable descriptions** for each column (e.g., `success: Campaign outcome — 1 = success, 2 = partial success, 3 = failure`)
+4. **Injects the enriched schema into every query understanding prompt** so the LLM writes correct SQL (using actual column names, valid value ranges, and proper data types)
+
+This means the chatbot understands your data dictionary without you writing any configuration.
+
+### Design Principle: Over-Refusal Prevention
+
+A naive anti-hallucination system refuses to answer whenever it is not 100% certain. This makes it useless for exploratory research where partial answers are valuable. The system explicitly distinguishes between:
+
+- **No relevant information found** → refuse (Layer 0)
+- **Some relevant information found, but incomplete** → answer with what is available, cite it, and note the limitation
+
+An incomplete answer grounded in three sources is more useful than a refusal when the user's documents *do* contain relevant information. The verification stack catches unsupported *claims*, not incomplete *coverage*.
+
+### Adapting This Design for Your Project
+
+This template is a **starting point**. Here are common ways to adapt it:
+
+| Your goal | What to change |
+|---|---|
+| **Different domain** | Change `chatbot.domain` in config.yaml. The system prompt automatically adjusts. |
+| **Stricter verification** | Increase `verification.max_iterations`, lower `retrieval.max_distance` (stricter relevance threshold) |
+| **Faster responses** | Set `verification.strict_mode: false` (warn instead of refuse), use a faster model (GPT-4.1-mini, Gemini Flash) |
+| **Larger datasets** | Increase `sql.max_rows`, switch to OpenAI embeddings for better retrieval quality |
+| **New file format** | Add one reader function to `src/readers/`, add one line to the registry dict |
+| **New AI provider** | Add one module to `src/llm/`, add one line to the registry dict |
+| **Deploy to the web** | Use the Docker setup, or deploy `app_web.py` to Streamlit Cloud |
+| **For a grant proposal** | Describe the 7-layer verification stack, dual retrieval, and schema enrichment as your technical approach. All three are implemented and tested. |
 
 ---
 
@@ -578,18 +699,29 @@ The container mounts your `knowledge_base/`, `chroma_db/`, `sql_db/`, `config.ya
 
 ### Advantages
 
-- **No hallucination by design.** The 7-layer verification stack catches unsupported claims before they reach you. If the chatbot can't verify an answer, it refuses rather than guessing.
-- **Full citation trail.** Every factual claim is tied to a specific source with page numbers or URLs. You can trace any claim back to the original document.
+**Anti-hallucination guardrails (the core differentiator):**
+
+- **7-layer verification stack.** No single defense against hallucination is reliable. This system layers seven independent checks -- from a hard gate that prevents the LLM from being called without evidence, to deterministic citation audits, to an iterative LLM self-verification loop. A failure at any one layer is caught by another. See [Sample Design Logic](#sample-design-logic) for the full rationale.
+- **Refuse rather than guess.** If retrieval finds zero relevant sources, the LLM is never called. The user gets a clear refusal, not a confident-sounding fabrication. This is Layer 0 and it is non-negotiable.
+- **Iterative self-correction.** When the verification loop detects an unsupported claim, it doesn't just flag it -- it sends the response back to the LLM with specific instructions to fix the problem, then re-verifies. Up to 3 correction cycles ensure the final answer is grounded.
+- **Full citation trail.** Every factual claim is tied to a specific source with page numbers or URLs. You can trace any claim back to the original document. Direct quotes are marked with quotation marks. The References section distinguishes local sources (primary) from web sources (supplementary).
+- **Deterministic checks complement LLM checks.** Layers 4, 4.5, and 5 are purely algorithmic -- they cannot be fooled by fluent text. They catch citation number inflation, missing filenames in references, and telltale phrases that signal training-data leakage.
+
+**Research capabilities:**
+
 - **Works with your own documents.** Unlike general-purpose chatbots, this one answers from *your* knowledge base. Your PDFs, datasets, and codebooks are the primary authority.
 - **Knows what it knows.** The chatbot builds a meta-overview during ingestion. Ask "What datasets do you have?" and it can answer, instead of refusing because no chunk matches.
 - **Structured data queries.** Ask "how many nonviolent campaigns succeeded after 2000?" and the chatbot queries your dataset directly using SQL. Schema enrichment with automatic codebook detection means the AI understands what each column means.
 - **Smart query understanding.** The chatbot reformulates questions for better search, resolves pronouns from conversation history, asks clarification when needed, and routes each query to the best search strategy.
 - **Reads 15 file formats.** Handles the formats social scientists actually use: Stata `.dta`, SPSS `.sav`, R `.rds`/`.rda`, Excel, CSV, PDF, Word, and plain text.
+
+**Practical benefits:**
+
 - **No data leaves your computer (except to the AI provider).** Documents are stored locally. Only relevant text chunks are sent to the AI provider as part of each query.
 - **Swappable AI providers.** Switch between OpenAI, Anthropic, and Google Gemini without changing your documents or setup.
 - **Web search augmentation.** Optionally supplement local documents with academic papers from Semantic Scholar. Local sources always take priority.
 - **Two interfaces.** Terminal for quick queries; web UI for a more visual experience. Both share the same backend.
-- **Open source and extensible.** The registry pattern makes it easy to add new file formats, AI providers, or search backends.
+- **Open source and extensible.** The registry pattern makes it easy to add new file formats, AI providers, or search backends. Fork it and adapt for your project.
 
 ### Limitations
 
