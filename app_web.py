@@ -119,7 +119,8 @@ def render_sidebar():
                 try:
                     count = ingest_documents(cfg)
                     st.success(f"Ingested {count} chunks.")
-                    # Clear the cached chunk count so it refreshes
+                    # Clear cached data so it refreshes after re-ingest
+                    st.session_state.pop("kb_welcome_summary", None)
                     st.rerun()
                 except Exception as e:
                     st.error(f"Ingestion failed: {e}")
@@ -252,9 +253,10 @@ def render_chat():
                 if result.get("refused"):
                     status.update(label="No sufficient sources found.", state="error")
                 elif result.get("verification_passed") is True:
+                    sql_label = f" + {n_sql} SQL rows" if n_sql else ""
                     status.update(
                         label=f"Verified ({result.get('iterations', 0)} iteration(s)). "
-                              f"{n_local} local + {n_web} web sources.",
+                              f"{n_local} local{sql_label} + {n_web} web sources.",
                         state="complete",
                     )
                 elif result.get("verification_passed") is False:
@@ -263,8 +265,9 @@ def render_chat():
                         state="error",
                     )
                 else:
+                    sql_label2 = f" + {n_sql} SQL rows" if n_sql else ""
                     status.update(
-                        label=f"Done. {n_local} local + {n_web} web sources.",
+                        label=f"Done. {n_local} local{sql_label2} + {n_web} web sources.",
                         state="complete",
                     )
 

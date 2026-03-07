@@ -44,7 +44,7 @@ def search_papers(query: str, limit: int = 5) -> list[dict]:
         results.append({
             "title": paper.get("title", "Untitled"), "authors": authors,
             "year": paper.get("year"), "abstract": abstract, "url": url,
-            "citation_count": paper.get("citationCount", 0), "source_type": "web_search",
+            "citation_count": paper.get("citationCount") or 0, "source_type": "web_search",
         })
-    results.sort(key=lambda x: x.get("citation_count", 0), reverse=True)
+    results.sort(key=lambda x: x.get("citation_count") or 0, reverse=True)
     return results

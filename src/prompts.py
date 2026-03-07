@@ -254,7 +254,7 @@ def build_query_understanding_prompt(
             schema_text=sql_schema_summary
         )
     else:
-        sql_routing_block = ""
+        sql_routing_block = '(No SQL tables available — always use route "vector" and omit sql_query.)\n'
 
     if kb_overview:
         kb_overview_block = (

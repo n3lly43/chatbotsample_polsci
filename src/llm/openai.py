@@ -38,7 +38,16 @@ def generate(system_prompt: str, user_message: str, api_key: str,
         return response.choices[0].message.content or ""
     except Exception as e:
         error_type = type(e).__name__
-        raise RuntimeError(f"OpenAI API error ({error_type}). Check your API key and network connection.") from e
+        error_msg = str(e)
+        # Provide specific guidance based on error type
+        if "auth" in error_type.lower() or "authentication" in error_type.lower():
+            raise RuntimeError(f"OpenAI authentication failed. Check your API key.") from e
+        elif "rate" in error_type.lower() or "429" in error_msg:
+            raise RuntimeError(f"OpenAI rate limit exceeded. Wait a moment and try again.") from e
+        elif "model" in error_msg.lower() or "not found" in error_msg.lower():
+            raise RuntimeError(f"OpenAI model error: {error_msg}") from e
+        else:
+            raise RuntimeError(f"OpenAI API error ({error_type}): {error_msg}") from e
 
 def list_models(api_key: str) -> list[str]:
     return list(SUPPORTED_MODELS)

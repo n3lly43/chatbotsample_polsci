@@ -6,11 +6,14 @@ BACKENDS = {
     "none": lambda query, limit=5: [],
 }
 
-def search(query: str, backend: str = "semantic_scholar", limit: int = 5) -> list[dict]:
+def search(query: str, backend: str = "none", limit: int = 5) -> list[dict]:
     fn = BACKENDS.get(backend)
     if fn is None:
-        raise ValueError(f"Unknown search backend: {backend}. Available: {list(BACKENDS.keys())}")
-    return fn(query, limit=limit)
+        return []
+    try:
+        return fn(query, limit=limit)
+    except Exception:
+        return []
 
 def format_web_results_as_context(results: list[dict]) -> str:
     if not results:

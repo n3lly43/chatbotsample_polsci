@@ -1,6 +1,6 @@
 # RAG Research Chatbot Template
 
-A **citation-verified research assistant chatbot** that answers questions using your own documents -- PDFs, Word files, spreadsheets, datasets, and more. Every answer cites its sources with numbered references, and a 6-layer verification system ensures the chatbot never makes things up.
+A **citation-verified research assistant chatbot** that answers questions using your own documents -- PDFs, Word files, spreadsheets, datasets, and more. Every answer cites its sources with numbered references, and a 7-layer verification system ensures the chatbot never makes things up.
 
 **Built for researchers.** No coding experience required. You provide your documents, choose an AI provider, and the chatbot does the rest.
 
@@ -20,7 +20,7 @@ A **citation-verified research assistant chatbot** that answers questions using 
   - [Step 1: Query Understanding](#step-1-query-understanding)
   - [Step 2: Retrieval](#step-2-retrieval)
   - [Step 3: Response Generation](#step-3-response-generation)
-  - [Step 4: Verification](#step-4-verification-6-layer-anti-hallucination-stack)
+  - [Step 4: Verification](#step-4-verification-7-layer-anti-hallucination-stack)
   - [Step 5: Display](#step-5-display)
 - [Configuration Reference](#configuration-reference)
 - [Docker (Optional)](#docker-optional)
@@ -397,9 +397,9 @@ The system prompt tells the LLM to:
 
 A **soft token cap** limits response length proportionally to context size -- less context means shorter answers, reducing the surface area for hallucination.
 
-### Step 4: Verification (6-Layer Anti-Hallucination Stack)
+### Step 4: Verification (7-Layer Anti-Hallucination Stack)
 
-This is the core differentiator. Before showing you the answer, it passes through six verification layers:
+This is the core differentiator. Before showing you the answer, it passes through seven verification layers:
 
 ```
 Layer 0: No-source gate
@@ -414,7 +414,7 @@ Layer 2: Response length cap
    v
 Layer 3: LLM self-verification loop (up to 3 iterations)
    │  A second LLM call audits the response against the sources
-   │  using a 9-point checklist. If errors are found, the response
+   │  using a 10-point checklist. If errors are found, the response
    │  is corrected and re-verified. If it still fails after 3
    │  attempts, the chatbot refuses to answer. (1-3 extra LLM calls)
    v
@@ -422,6 +422,11 @@ Layer 4: Term-overlap check
    │  For every cited claim, checks what fraction of words actually
    │  appear in the source text. Flags claims with < 40% overlap
    │  as potentially ungrounded. (Free, no LLM call)
+   v
+Layer 4.5: Citation audit
+   │  Checks that citation numbers [N] don't exceed actual source
+   │  count and that the References section mentions filenames from
+   │  retrieved sources. (Free, no LLM call)
    v
 Layer 5: Warning-phrase scanner
       Scans for phrases like "based on my knowledge" or "it is well
@@ -573,7 +578,7 @@ The container mounts your `knowledge_base/`, `chroma_db/`, `sql_db/`, `config.ya
 
 ### Advantages
 
-- **No hallucination by design.** The 6-layer verification stack catches unsupported claims before they reach you. If the chatbot can't verify an answer, it refuses rather than guessing.
+- **No hallucination by design.** The 7-layer verification stack catches unsupported claims before they reach you. If the chatbot can't verify an answer, it refuses rather than guessing.
 - **Full citation trail.** Every factual claim is tied to a specific source with page numbers or URLs. You can trace any claim back to the original document.
 - **Works with your own documents.** Unlike general-purpose chatbots, this one answers from *your* knowledge base. Your PDFs, datasets, and codebooks are the primary authority.
 - **Knows what it knows.** The chatbot builds a meta-overview during ingestion. Ask "What datasets do you have?" and it can answer, instead of refusing because no chunk matches.
@@ -625,9 +630,9 @@ This means it cannot find relevant passages in your documents. Try:
 - Adding more relevant documents to `knowledge_base/` and re-running `python ingest.py`
 - Enabling web search (`/websearch on`) to supplement with academic papers
 
-### PyPDF2 deprecation warning
+### PDF reader
 
-You may see a warning about PyPDF2 being deprecated. This is cosmetic and does not affect functionality.
+This project uses `pypdf` (successor to PyPDF2) for PDF extraction.
 
 ### Ingestion is very slow
 

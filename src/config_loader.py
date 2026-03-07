@@ -32,9 +32,14 @@ def load_config(config_path: str = None) -> dict:
 
     # Normalize None-valued sections to empty dicts so chained .get() never
     # fails with AttributeError (e.g. `llm:` with no sub-keys → None).
-    for key in list(cfg.keys()):
-        if cfg[key] is None:
-            cfg[key] = {}
+    # Recurse into nested dicts so `paths:\n  vector_db:` also gets normalized.
+    def _normalize_nulls(d):
+        for key in list(d.keys()):
+            if d[key] is None:
+                d[key] = {}
+            elif isinstance(d[key], dict):
+                _normalize_nulls(d[key])
+    _normalize_nulls(cfg)
 
     for provider, env_var in _ENV_KEY_MAP.items():
         env_val = os.environ.get(env_var)

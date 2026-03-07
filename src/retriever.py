@@ -4,6 +4,20 @@ import re
 
 from src.search import search, format_web_results_as_context
 
+_collection_cache = {}
+
+
+def _get_cached_collection(cfg: dict):
+    """Get or create cached ChromaDB collection."""
+    from src.ingest import get_chroma_collection
+    db_path = cfg.get("paths", {}).get("vector_db", "chroma_db")
+    embed_provider = cfg.get("embeddings", {}).get("provider", "local")
+    cache_key = f"{db_path}:{embed_provider}"
+    if cache_key not in _collection_cache:
+        _collection_cache[cache_key] = get_chroma_collection(cfg)
+    return _collection_cache[cache_key]
+
+
 NO_SOURCES_REFUSAL = (
     "I don't have any information on this topic in my knowledge base. "
     "No relevant local documents or web sources were found. "
@@ -23,18 +37,17 @@ def retrieve_from_vectordb(query: str, cfg: dict) -> list[dict]:
     is included as a fallback so that meta-questions about the knowledge
     base can still be answered.
     """
-    from src.ingest import get_chroma_collection
-
     retrieval_cfg = cfg.get("retrieval", {})
     top_k = retrieval_cfg.get("top_k", 50)
     max_distance = retrieval_cfg.get("max_distance", 0.55)
-    collection = get_chroma_collection(cfg)
+    collection = _get_cached_collection(cfg)
 
-    if collection.count() == 0:
+    total = collection.count()
+    if total == 0:
         return []
 
     # Query a large candidate pool, then filter by relevance
-    candidate_count = min(top_k, collection.count())
+    candidate_count = min(top_k, total)
     results = collection.query(
         query_texts=[query],
         n_results=candidate_count,
@@ -193,6 +206,8 @@ def _build_fallback_sql_query(query: str, cfg: dict) -> str | None:
         for col in text_cols:
             for word in words:
                 safe_word = word.replace("'", "''")
+                if not re.match(r'^\w+$', safe_word):
+                    continue  # Skip non-alphanumeric words
                 conditions.append(f'"{col}" LIKE \'%{safe_word}%\'')
 
         if conditions:
@@ -265,6 +280,9 @@ def _try_alternate_columns(sql_query: str, cfg: dict) -> tuple[list[dict], str] 
 
     max_rows = cfg.get("sql", {}).get("max_rows", 200)
     safe_value = search_value.replace("'", "''")
+    # Strip dangerous characters for defense-in-depth
+    if not re.match(r"^[\w\s.,'-]+$", safe_value):
+        safe_value = re.sub(r"[;'\\\"]", "", safe_value)
     for col in text_cols:
         alt_query = f'SELECT * FROM "{table_name}" WHERE "{col}" LIKE \'%{safe_value}%\' LIMIT {max_rows}'
         rows = execute_sql_query(alt_query, cfg)
@@ -316,7 +334,7 @@ def _run_sql_retrieval(sql_query: str, cfg: dict) -> tuple[list[dict], str, str]
     # Step 3: if still no results, try word-level fuzzy (LIKE '%Korea%')
     if not sql_rows:
         word_fuzzy = make_fuzzy_query(sql_query, word_level=True)
-        if word_fuzzy and word_fuzzy != (make_fuzzy_query(sql_query) or ""):
+        if word_fuzzy and word_fuzzy != (fuzzy or ""):
             sql_rows = execute_sql_query(word_fuzzy, cfg)
             if sql_rows:
                 effective_query = word_fuzzy
@@ -377,7 +395,7 @@ def retrieve(
         and not sql_rows
         and (
             (route in ("vector", "both") and not db_results)
-            or route == "sql"
+            or (route == "sql" and not db_results)
         )
     )
     if sql_fallback_needed:
@@ -387,11 +405,11 @@ def retrieve(
             if fallback_query:
                 sql_rows, sql_context, sql_match_type = _run_sql_retrieval(fallback_query, cfg)
         else:
-            # route is "vector" or "both" — existing fallback logic
-            if not sql_query:
-                sql_query = _build_fallback_sql_query(query, cfg)
-            if sql_query:
-                sql_rows, sql_context, sql_match_type = _run_sql_retrieval(sql_query, cfg)
+            # route is "vector" or "both" — build fresh keyword query
+            # (if sql_query exists, it was already tried above and returned nothing)
+            fallback_sql = _build_fallback_sql_query(query, cfg)
+            if fallback_sql:
+                sql_rows, sql_context, sql_match_type = _run_sql_retrieval(fallback_sql, cfg)
 
     # ── Web search ───────────────────────────────────────────────────
     web_enabled = cfg.get("web_search", {}).get("enabled", False)

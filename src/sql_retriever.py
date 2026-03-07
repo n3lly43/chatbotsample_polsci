@@ -14,6 +14,15 @@ _DANGEROUS_KEYWORDS = re.compile(
 )
 
 
+def _strip_quoted(sql: str) -> str:
+    """Remove quoted strings and identifiers for safe keyword checking."""
+    # Remove single-quoted strings (handles '' escaping)
+    result = re.sub(r"'(?:[^']|'')*'", "", sql)
+    # Remove double-quoted identifiers
+    result = re.sub(r'"[^"]*"', "", result)
+    return result
+
+
 def _strip_sql_comments(sql: str) -> str:
     """Remove SQL comments (single-line -- and multi-line /* */) from a query."""
     prev = None
@@ -36,12 +45,16 @@ def _validate_sql(sql: str) -> bool:
         return False
     if ";" in stripped:
         return False
-    if not stripped.upper().startswith("SELECT"):
+    if not stripped.upper().startswith("SELECT "):
         return False
-    if _DANGEROUS_KEYWORDS.search(stripped):
+    unquoted = _strip_quoted(stripped)
+    if _DANGEROUS_KEYWORDS.search(unquoted):
+        return False
+    # Block access to SQLite system tables
+    if re.search(r'\bsqlite_(master|schema|temp_master|temp_schema)\b', stripped, re.IGNORECASE):
         return False
     # Block subqueries: reject if more than one SELECT keyword
-    if len(re.findall(r'\bSELECT\b', stripped, re.IGNORECASE)) > 1:
+    if len(re.findall(r'\bSELECT\b', unquoted, re.IGNORECASE)) > 1:
         return False
     return True
 
@@ -102,7 +115,7 @@ def execute_sql_query(sql_query: str, cfg: dict) -> list[dict]:
 
 def format_sql_results_as_context(
     rows: list[dict], sql_query: str, source_file: str,
-    table_info: dict = None, max_rows: int = 0,
+    table_info: dict = None, max_rows: int = None,
 ) -> str:
     """Format SQL result rows as context for the verification pipeline.
 
@@ -121,7 +134,7 @@ def format_sql_results_as_context(
         return ""
 
     row_label = f"Rows returned: {len(rows)}"
-    if max_rows and len(rows) >= max_rows:
+    if max_rows is not None and len(rows) >= max_rows:
         row_label += f" (truncated — more rows may exist, limit was {max_rows})"
 
     parts = [
@@ -186,7 +199,13 @@ def make_fuzzy_query(sql: str, word_level: bool = False) -> str | None:
     )
 
     if not word_level:
-        new_sql, count = pattern.subn(r"\1LIKE '%\2%'", sql)
+        def _phrase_replace(m):
+            col_part = m.group(1)
+            value = m.group(2).replace("'", "''")
+            # Escape LIKE wildcards in the value
+            value = value.replace("%", "\\%").replace("_", "\\_")
+            return f"{col_part}LIKE '%{value}%' ESCAPE '\\'"
+        new_sql, count = pattern.subn(_phrase_replace, sql)
         if count == 0:
             return None
         return new_sql
@@ -194,18 +213,22 @@ def make_fuzzy_query(sql: str, word_level: bool = False) -> str | None:
     # Word-level: extract significant words from each value
     def _word_replace(m):
         col_part = m.group(1)
-        value = m.group(2)
+        value = m.group(2).replace("'", "''")
+        # Escape LIKE wildcards in the value
+        value = value.replace("%", "\\%").replace("_", "\\_")
         words = [
-            w for w in re.split(r'\W+', value)
+            w.replace("'", "''").replace("%", "\\%").replace("_", "\\_")
+            for w in re.split(r'\W+', m.group(2))
             if len(w) >= 3 and w.lower() not in _FUZZY_STOPWORDS
         ]
+        esc = " ESCAPE '\\'"
         if not words:
             # Fallback: use the original value as phrase LIKE
-            return f"{col_part}LIKE '%{value}%'"
+            return f"{col_part}LIKE '%{value}%'{esc}"
         if len(words) == 1:
-            return f"{col_part}LIKE '%{words[0]}%'"
+            return f"{col_part}LIKE '%{words[0]}%'{esc}"
         # Multiple words: join with AND on the same column
-        conditions = [f"{col_part}LIKE '%{w}%'" for w in words]
+        conditions = [f"{col_part}LIKE '%{w}%'{esc}" for w in words]
         return "(" + " AND ".join(conditions) + ")"
 
     new_sql, count = pattern.subn(_word_replace, sql)

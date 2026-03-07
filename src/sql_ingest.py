@@ -565,6 +565,7 @@ def _ingest_tables(
             placeholders = ", ".join(["?"] * len(safe_headers))
             insert_sql = f'INSERT INTO "{table_name}" VALUES ({placeholders})'
 
+            batch = []
             for row in rows:
                 values = []
                 for col_idx, col_type in enumerate(col_types):
@@ -583,7 +584,12 @@ def _ingest_tables(
                             values.append(None)
                     else:
                         values.append(str(raw).strip())
-                conn.execute(insert_sql, values)
+                batch.append(values)
+                if len(batch) >= 1000:
+                    conn.executemany(insert_sql, batch)
+                    batch = []
+            if batch:
+                conn.executemany(insert_sql, batch)
 
             conn.commit()
 

@@ -1,4 +1,4 @@
-version: "3.8"
+# Prerequisites: config.yaml must exist. Run 'python setup.py' first.
 services:
   chatbot:
     build: .
@@ -8,8 +8,9 @@ services:
       - ./knowledge_base:/app/knowledge_base
       - ./chroma_db:/app/chroma_db
       - ./sql_db:/app/sql_db
-      - ./config.yaml:/app/config.yaml
-      - ./.env:/app/.env
+      - ./config.yaml:/app/config.yaml:ro  # Must exist before running
+      # API keys: set via environment variables below (preferred)
+      # or mount .env file: - ./.env:/app/.env:ro
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}

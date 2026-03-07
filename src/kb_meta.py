@@ -281,7 +281,7 @@ def collect_file_records(collection, *, _cache: tuple = None) -> list[dict]:
         if source == META_SOURCE:
             continue
         if source not in source_info:
-            ext = Path(source).suffix if "." in source else ""
+            ext = Path(source).suffix
             source_info[source] = {
                 "source": source,
                 "dataset": meta.get("dataset", "general"),

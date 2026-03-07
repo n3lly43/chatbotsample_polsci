@@ -196,11 +196,14 @@ def ingest_documents(cfg: dict = None, documents_dir: str = None) -> int:
             if not os.path.isabs(db_path):
                 project_root = Path(__file__).resolve().parent.parent
                 db_path = os.path.join(str(project_root), db_path)
+            cleared_any = False
             for meta_name in ("kb_meta.txt", "kb_meta_brief.txt"):
                 meta_file = os.path.join(db_path, meta_name)
                 if os.path.exists(meta_file):
                     os.remove(meta_file)
-            print("Cleared stale KB overview.")
+                    cleared_any = True
+            if cleared_any:
+                print("Cleared stale KB overview.")
         except Exception as e:
             print(f"Warning: Could not clear KB meta: {e}")
         return 0
@@ -288,18 +291,15 @@ def ingest_documents(cfg: dict = None, documents_dir: str = None) -> int:
                 print(f"SQL ingestion error (non-fatal): {e}")
 
     # ── KB meta overview (LLM-generated) ────────────────────────────
-    # Clear stale meta files before regenerating
     _db_path = cfg.get("paths", {}).get("vector_db", "chroma_db")
     if not os.path.isabs(_db_path):
         _db_path = os.path.join(str(Path(__file__).resolve().parent.parent), _db_path)
-    for _meta_name in ("kb_meta.txt", "kb_meta_brief.txt"):
-        _meta_file = os.path.join(_db_path, _meta_name)
-        if os.path.exists(_meta_file):
-            os.remove(_meta_file)
 
     print("\nGenerating knowledge base overview...")
     try:
         from src.kb_meta import build_and_store_overview
+        # build_and_store_overview overwrites meta files via write_text();
+        # no pre-deletion needed — old files stay intact if generation fails.
         overview = build_and_store_overview(collection, cfg)
         if overview:
             print("KB overview generated and indexed.")

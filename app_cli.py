@@ -9,7 +9,7 @@ from rich.text import Text
 
 from src.config_loader import load_config, get_api_key
 from src.ingest import ingest_documents
-from src.kb_meta import summarize_kb_for_welcome
+from src.kb_meta import load_kb_meta_brief
 from src.query_engine import understand_query
 from src.retriever import retrieve
 from src.verifier import verify_and_respond
@@ -217,7 +217,7 @@ def main() -> None:
         welcome.append(". Use /websearch on to enable.\n\n")
 
     # KB overview summary (LLM-generated welcome summary)
-    kb_summary = summarize_kb_for_welcome(cfg)
+    kb_summary = load_kb_meta_brief(cfg)
     if kb_summary:
         welcome.append("Knowledge Base:\n", style="bold")
         welcome.append(kb_summary + "\n\n", style="dim")

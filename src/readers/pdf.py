@@ -2,7 +2,7 @@
 
 
 def read_pdf(file_path: str) -> list[dict]:
-    from PyPDF2 import PdfReader
+    from pypdf import PdfReader
     reader = PdfReader(file_path)
     pages = []
     for i, page in enumerate(reader.pages):

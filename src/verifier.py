@@ -1,5 +1,5 @@
 """
-6-Layer Anti-Hallucination Verification Pipeline.
+7-Layer Anti-Hallucination Verification Pipeline.
 
 Layers:
     0 — No-source refusal (pre-LLM gate)
@@ -7,6 +7,7 @@ Layers:
     2 — Soft max-token cap (proportional to context length)
     3 — LLM-as-verifier (structured JSON audit)
     4 — Semantic similarity cross-check (term-overlap heuristic)
+    4.5 — Deterministic citation audit (validate_citations)
     5 — Warning-phrase scanner (advisory flags)
 
 The main entry point is ``verify_and_respond``.
@@ -159,17 +160,25 @@ def validate_citations(response: str, retrieval_result: dict) -> list[str]:
     """
     warnings = []
 
-    # Count actual sources available
-    db_count = len(retrieval_result.get("db_results", []))
+    # Count unique source documents (not raw chunks)
+    db_results = retrieval_result.get("db_results", [])
+    unique_db_sources = set()
+    for chunk in db_results:
+        source = chunk.get("metadata", {}).get("source", "")
+        if source:
+            unique_db_sources.add(source)
+    db_count = len(unique_db_sources) if unique_db_sources else (1 if db_results else 0)
     web_count = len(retrieval_result.get("web_results", []))
-    sql_count = len(retrieval_result.get("sql_results", []))
+    sql_count = 1 if retrieval_result.get("sql_results") else 0
     total_sources = db_count + web_count + sql_count
 
     if total_sources == 0:
         return warnings
 
-    # Extract citation numbers from response body
-    citation_nums = set(int(m) for m in re.findall(r"\[(\d+)\]", response))
+    # Extract citation numbers from response BODY only (not References section)
+    refs_split = re.split(r'(?im)^#+\s*(references|sources)\b|^\*\*(references|sources)\*\*', response)
+    body_text = refs_split[0] if refs_split else response
+    citation_nums = set(int(m) for m in re.findall(r"\[(\d+)\]", body_text))
     if not citation_nums:
         return warnings
 
@@ -181,10 +190,12 @@ def validate_citations(response: str, retrieval_result: dict) -> list[str]:
         )
 
     # Check that source file names from retrieval appear in the References section
-    refs_match = re.search(r"(?i)\b(references|sources)\b.*", response, re.DOTALL)
+    refs_match = re.search(
+        r"(?im)(^#+\s*(references|sources)\b|^\*\*(references|sources)\*\*).*",
+        response, re.DOTALL,
+    )
     if refs_match:
         refs_text = refs_match.group(0).lower()
-        db_results = retrieval_result.get("db_results", [])
         matched_sources = 0
         for chunk in db_results:
             source = chunk.get("metadata", {}).get("source", "")
@@ -193,7 +204,24 @@ def validate_citations(response: str, retrieval_result: dict) -> list[str]:
                 filename = source.rsplit("/", 1)[-1].lower()
                 if filename in refs_text:
                     matched_sources += 1
-        if db_results and matched_sources == 0:
+        # Also check SQL source files
+        sql_results = retrieval_result.get("sql_results", [])
+        for sql_chunk in sql_results:
+            sql_source = sql_chunk.get("metadata", {}).get("source", "")
+            if sql_source:
+                sql_filename = sql_source.rsplit("/", 1)[-1].lower()
+                if sql_filename in refs_text:
+                    matched_sources += 1
+        # Also check web source URLs
+        web_results = retrieval_result.get("web_results", [])
+        for web_chunk in web_results:
+            web_url = web_chunk.get("metadata", {}).get("url", "")
+            if web_url and web_url.lower() in refs_text:
+                matched_sources += 1
+        # Only warn when db_results are present and are the primary source
+        # and no filenames matched from any source type
+        has_any_source = db_results or sql_results or web_results
+        if has_any_source and matched_sources == 0 and db_results:
             warnings.append(
                 "References section does not mention any filenames from "
                 "the retrieved local sources. Citations may be fabricated."
@@ -267,7 +295,7 @@ def verify_and_respond(
     query: str, retrieval_result: dict, cfg: dict,
     original_query: str = "",
 ) -> dict:
-    """Generate a response and run it through the 6-layer verification stack.
+    """Generate a response and run it through the 7-layer verification stack.
 
     Args:
         query: The display query (reformulated by QU layer).
@@ -350,9 +378,6 @@ def verify_and_respond(
             "iterations": 0,
         }
 
-    # ── Layer 4.5: Deterministic citation audit ───────────────────────
-    citation_warnings = validate_citations(response, retrieval_result)
-
     # ── Short-circuit if verification is disabled ─────────────────────────
     verification_cfg = cfg.get("verification", {})
     if not verification_cfg.get("enabled", True):
@@ -407,7 +432,8 @@ def verify_and_respond(
                 max_tokens=1024,
             )
         except Exception:
-            raw_verification = ""
+            # Verification LLM failed — skip correction, continue to next iteration
+            continue
         vr = parse_verification_result(raw_verification)
 
         if vr.get("pass", False):
@@ -483,8 +509,9 @@ def verify_and_respond(
         "against the provided sources. Some claims may lack adequate "
         "grounding. Please cross-check important facts."
     )
-    if citation_warnings:
-        warning += "\n**Citation issues:** " + "; ".join(citation_warnings)
+    final_citation_warnings = validate_citations(response, retrieval_result)
+    if final_citation_warnings:
+        warning += "\n**Citation issues:** " + "; ".join(final_citation_warnings)
     return {
         "response": response + warning,
         "refused": False,

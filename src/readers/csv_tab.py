@@ -19,7 +19,8 @@ def read_csv_tab(file_path: str, delimiter: str = None) -> list[dict]:
     row_texts = []
     for row in rows[1:]:
         parts = []
-        for header, val in zip(headers, row):
+        padded_row = list(row) + [""] * max(0, len(headers) - len(row))
+        for header, val in zip(headers, padded_row[:len(headers)]):
             val = val.strip().strip('"')
             if val:
                 parts.append(f"{header}: {val}")

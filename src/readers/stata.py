@@ -29,7 +29,7 @@ def _dataframe_to_pages(df, meta) -> list[dict]:
         parts = []
         for col in headers:
             val = row[col]
-            if val is not None and str(val).strip() and str(val) != "nan":
+            if val is not None and str(val).strip() and str(val).lower() not in ("nan", "nat", "<na>", "inf", "-inf"):
                 parts.append(f"{col}: {val}")
         if not parts:
             continue

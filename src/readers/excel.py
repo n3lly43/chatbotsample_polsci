@@ -44,8 +44,9 @@ def _rows_to_pages(rows: list[tuple], sheet_name: str) -> list[dict]:
     row_texts = []
     for row in rows[1:]:
         parts = []
-        for header, val in zip(headers, row):
-            if val is not None and str(val).strip():
+        padded_row = list(row) + [None] * max(0, len(headers) - len(row))
+        for header, val in zip(headers, padded_row[:len(headers)]):
+            if val is not None and str(val).strip() and str(val).lower() not in ("nan", "nat", "<na>", "inf", "-inf"):
                 parts.append(f"{header}: {val}")
         if parts:
             row_texts.append("; ".join(parts))

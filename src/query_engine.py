@@ -93,7 +93,7 @@ def understand_query(
             "You are a query reformulation assistant. Return only JSON.",
             prompt,
             cfg,
-            max_tokens=256,
+            max_tokens=512,
         )
         result = _parse_qu_result(raw, user_query)
     except Exception:
