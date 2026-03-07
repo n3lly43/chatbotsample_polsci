@@ -22,7 +22,7 @@ def generate(system_prompt: str, user_message: str, cfg: dict,
     model = llm_cfg.get("model") or None
     temperature = llm_cfg.get("temperature", 0.0)
     if max_tokens is None:
-        max_tokens = llm_cfg.get("max_tokens", 2048)
+        max_tokens = llm_cfg.get("max_tokens", 8192)
     # Validate parameters
     try:
         temperature = max(0.0, min(float(temperature), 2.0))
@@ -34,7 +34,7 @@ def generate(system_prompt: str, user_message: str, cfg: dict,
     try:
         max_tokens = max(1, min(int(max_tokens), 128000))
     except (ValueError, TypeError):
-        max_tokens = 2048
+        max_tokens = 8192
     return PROVIDERS[provider].generate(
         system_prompt=system_prompt, user_message=user_message,
         api_key=api_key, model=model, temperature=temperature, max_tokens=max_tokens,

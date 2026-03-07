@@ -1,13 +1,13 @@
 """OpenAI LLM provider."""
-SUPPORTED_MODELS = ["gpt-4.1", "gpt-4o", "gpt-4o-mini"]
+SUPPORTED_MODELS = ["gpt-5", "gpt-5-mini"]
 
 def generate(system_prompt: str, user_message: str, api_key: str,
              model: str = None, temperature: float = 0.0,
-             max_tokens: int = 2048) -> str:
-    model = model or "gpt-4o"
+             max_tokens: int = 8192) -> str:
+    model = model or "gpt-5"
     from openai import OpenAI
     client = OpenAI(api_key=api_key)
-    is_reasoning = model in ("o1", "o3", "o4") or model.startswith(("o1-", "o3-", "o4-"))
+    is_reasoning = model in ("o1", "o3", "o4", "o4-mini") or model.startswith(("o1-", "o3-", "o4-"))
     try:
         if is_reasoning:
             # Reasoning models include thinking tokens in max_completion_tokens,

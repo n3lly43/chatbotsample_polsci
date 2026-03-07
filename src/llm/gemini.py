@@ -9,7 +9,7 @@ SUPPORTED_MODELS = [
 
 def generate(system_prompt: str, user_message: str, api_key: str,
              model: str = None, temperature: float = 0.0,
-             max_tokens: int = 2048) -> str:
+             max_tokens: int = 8192) -> str:
     from google import genai
 
     model = model or SUPPORTED_MODELS[0]

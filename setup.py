@@ -34,7 +34,7 @@ def generate_config(
             "provider": provider,
             "model": model,
             "temperature": 0.0,
-            "max_tokens": 2048,
+            "max_tokens": 8192,
         },
         "api_keys": {
             "openai": "",
@@ -153,7 +153,7 @@ def run_wizard():
     except Exception:
         print(f"  Warning: Could not validate API key for {provider}. Using default model list.")
         fallback = {
-            "openai": ["gpt-4.1", "gpt-4o", "gpt-4o-mini"],
+            "openai": ["gpt-5", "gpt-5-mini"],
             "anthropic": ["claude-sonnet-4-6", "claude-opus-4-6", "claude-haiku-4-5"],
             "gemini": ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash"],
         }

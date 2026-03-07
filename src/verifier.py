@@ -336,7 +336,7 @@ def verify_and_respond(
     bot_name = cfg.get("chatbot", {}).get("name", "ResearchBot")
     domain = cfg.get("chatbot", {}).get("domain", "research")
     llm_cfg = cfg.get("llm", {})
-    default_max = llm_cfg.get("max_tokens", 2048)
+    default_max = llm_cfg.get("max_tokens", 8192)
 
     # ── Load KB overview for general awareness (brief version) ──────────
     from src.kb_meta import load_kb_meta_brief
