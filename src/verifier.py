@@ -168,7 +168,7 @@ def validate_citations(response: str, retrieval_result: dict) -> list[str]:
     db_results = retrieval_result.get("db_results", [])
     db_count = len(db_results)
     web_count = len(retrieval_result.get("web_results", []))
-    sql_count = 1 if retrieval_result.get("sql_results") else 0
+    sql_count = len(retrieval_result.get("sql_results", []))
     total_sources = db_count + web_count + sql_count
 
     if total_sources == 0:
