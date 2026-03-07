@@ -1,18 +1,29 @@
 """OpenAI LLM provider."""
 SUPPORTED_MODELS = ["gpt-5", "gpt-5-mini"]
 
+# Models that don't support temperature or legacy max_tokens parameter.
+# These require max_completion_tokens and the "developer" role instead of "system".
+_RESTRICTED_PARAM_MODELS = {"gpt-5", "gpt-5-mini", "o1", "o3", "o4", "o4-mini"}
+_RESTRICTED_PARAM_PREFIXES = ("o1-", "o3-", "o4-", "gpt-5-")
+
+
+def _is_restricted_model(model: str) -> bool:
+    """Check if the model restricts temperature/max_tokens/system role."""
+    return model in _RESTRICTED_PARAM_MODELS or model.startswith(_RESTRICTED_PARAM_PREFIXES)
+
+
 def generate(system_prompt: str, user_message: str, api_key: str,
              model: str = None, temperature: float = 0.0,
              max_tokens: int = 8192) -> str:
     model = model or "gpt-5"
     from openai import OpenAI
     client = OpenAI(api_key=api_key)
-    is_reasoning = model in ("o1", "o3", "o4", "o4-mini") or model.startswith(("o1-", "o3-", "o4-"))
     try:
-        if is_reasoning:
-            # Reasoning models include thinking tokens in max_completion_tokens,
-            # so we need a larger budget to get enough output tokens.
-            reasoning_budget = min(max(max_tokens * 4, 4096), 128000)
+        if _is_restricted_model(model):
+            # These models don't support temperature or the "system" role.
+            # Reasoning models need a larger budget for thinking tokens.
+            is_reasoning = model in ("o1", "o3", "o4", "o4-mini") or model.startswith(("o1-", "o3-", "o4-"))
+            budget = min(max(max_tokens * 4, 4096), 128000) if is_reasoning else max_tokens
             messages = [
                 {"role": "developer", "content": system_prompt},
                 {"role": "user", "content": user_message},
@@ -20,7 +31,7 @@ def generate(system_prompt: str, user_message: str, api_key: str,
             response = client.chat.completions.create(
                 model=model,
                 messages=messages,
-                max_completion_tokens=reasoning_budget,
+                max_completion_tokens=budget,
             )
         else:
             messages = [
@@ -39,7 +50,6 @@ def generate(system_prompt: str, user_message: str, api_key: str,
     except Exception as e:
         error_type = type(e).__name__
         error_msg = str(e)
-        # Provide specific guidance based on error type
         if "auth" in error_type.lower() or "authentication" in error_type.lower():
             raise RuntimeError(f"OpenAI authentication failed. Check your API key.") from e
         elif "rate" in error_type.lower() or "429" in error_msg:
