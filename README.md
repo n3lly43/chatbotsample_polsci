@@ -770,6 +770,19 @@ Large datasets take time to process. Consider using a codebook instead of the fu
 
 ---
 
+## Citation
+
+If you use this template in your research, teaching, or grant deliverables, please cite:
+
+```bibtex
+@software{lian2026ragchatbot,
+  author  = {Lian, Jie},
+  title   = {RAG Research Chatbot Template},
+  year    = {2026},
+  url     = {https://github.com/LIANJie-Jason/chatbotsample_api}
+}
+```
+
 ## License
 
 MIT -- see [LICENSE](LICENSE).
