@@ -153,9 +153,9 @@ def run_wizard():
     except Exception:
         print(f"  Warning: Could not validate API key for {provider}. Using default model list.")
         fallback = {
-            "openai": ["gpt-5", "gpt-5-mini"],
-            "anthropic": ["claude-sonnet-4-6", "claude-opus-4-6", "claude-haiku-4-5"],
-            "gemini": ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash"],
+            "openai": ["gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano"],
+            "anthropic": ["claude-sonnet-4-6", "claude-haiku-4-5", "claude-opus-4-6"],
+            "gemini": ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"],
         }
         models = fallback.get(provider, ["default-model"])
 

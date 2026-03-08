@@ -1,5 +1,5 @@
 """Anthropic LLM provider."""
-SUPPORTED_MODELS = ["claude-sonnet-4-6", "claude-opus-4-6", "claude-haiku-4-5"]
+SUPPORTED_MODELS = ["claude-sonnet-4-6", "claude-haiku-4-5", "claude-opus-4-6"]
 
 def generate(system_prompt: str, user_message: str, api_key: str,
              model: str = None, temperature: float = 0.0,

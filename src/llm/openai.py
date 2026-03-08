@@ -1,5 +1,5 @@
 """OpenAI LLM provider."""
-SUPPORTED_MODELS = ["gpt-5", "gpt-5-mini"]
+SUPPORTED_MODELS = ["gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano"]
 
 # Models that don't support temperature or legacy max_tokens parameter.
 # These require max_completion_tokens and the "developer" role instead of "system".
@@ -15,7 +15,7 @@ def _is_restricted_model(model: str) -> bool:
 def generate(system_prompt: str, user_message: str, api_key: str,
              model: str = None, temperature: float = 0.0,
              max_tokens: int = 8192) -> str:
-    model = model or "gpt-5"
+    model = model or "gpt-4.1"
     from openai import OpenAI
     client = OpenAI(api_key=api_key)
     try:

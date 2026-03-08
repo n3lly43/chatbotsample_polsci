@@ -622,9 +622,9 @@ chatbot:
 
 llm:
   provider: "openai"               # openai | anthropic | gemini
-  model: "gpt-4o"                  # Model name (from provider's catalog)
+  model: "gpt-4.1"                 # Model name (from provider's catalog)
   temperature: 0.0                 # 0.0 = deterministic; higher = more creative
-  max_tokens: 2048                 # Maximum response length
+  max_tokens: 8192                 # Maximum response length
 
 embeddings:
   provider: "local"                # local (free) | openai (better but costs money)
