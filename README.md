@@ -633,7 +633,7 @@ embeddings:
 retrieval:
   chunk_size: 1000                 # Characters per chunk (when splitting documents)
   chunk_overlap: 100               # Overlap between chunks (preserves context)
-  top_k: 50                        # Candidate pool cap for vector search
+  top_k: 20                        # Candidate pool cap for vector search
   max_distance: 0.55               # Relevance threshold (0=identical, 1=unrelated)
 
 web_search:
