@@ -14,7 +14,7 @@ _ENV_KEY_MAP = {
     "gemini": "GEMINI_API_KEY",
 }
 
-_PROVIDER_CHOICES = {"1": "openai", "2": "anthropic", "3": "gemini"}
+_PROVIDER_CHOICES = {"1": "openai", "2": "anthropic", "3": "gemini", "4": "meta-llama"}
 
 
 def generate_config(
@@ -40,6 +40,7 @@ def generate_config(
             "openai": "",
             "anthropic": "",
             "gemini": "",
+            "hugging face": "",
         },
         "embeddings": {
             "provider": "local",
@@ -136,6 +137,7 @@ def run_wizard():
     print("  1) OpenAI")
     print("  2) Anthropic")
     print("  3) Google Gemini")
+    print("  4) Meta Llama")
     provider_choice = input("Choose [1]: ").strip() or "1"
     provider = _PROVIDER_CHOICES.get(provider_choice, "openai")
 
@@ -156,6 +158,7 @@ def run_wizard():
             "openai": ["gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano"],
             "anthropic": ["claude-sonnet-4-6", "claude-haiku-4-5", "claude-opus-4-6"],
             "gemini": ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"],
+            "meta": ["Llama-3.3-70B-Instruct"],
         }
         models = fallback.get(provider, ["default-model"])
 

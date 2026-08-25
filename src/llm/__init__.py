@@ -2,12 +2,14 @@
 from src.llm import openai as _openai
 from src.llm import anthropic as _anthropic
 from src.llm import gemini as _gemini
+from src.llm import meta as _llama
 from src.config_loader import get_api_key
 
 PROVIDERS = {
     "openai": _openai,
     "anthropic": _anthropic,
     "gemini": _gemini,
+    "meta-llama": _llama,
 }
 
 def generate(system_prompt: str, user_message: str, cfg: dict,
