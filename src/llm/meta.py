@@ -1,5 +1,5 @@
 
-SUPPORTED_MODELS = ["Llama-3.3-70B-Instruct"]
+SUPPORTED_MODELS = ["meta-llama/Llama-3.3-70B-Instruct"]
 
 
 def generate(system_prompt: str, user_message: str, api_key: str,
