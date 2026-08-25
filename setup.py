@@ -41,7 +41,7 @@ def generate_config(
             "openai": "",
             "anthropic": "",
             "gemini": "",
-            "hugging face": "",
+            "meta-llama": "",
         },
         "embeddings": {
             "provider": "local",
