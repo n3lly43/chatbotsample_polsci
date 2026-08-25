@@ -12,7 +12,7 @@ _ENV_KEY_MAP = {
     "openai": "OPENAI_API_KEY",
     "anthropic": "ANTHROPIC_API_KEY",
     "gemini": "GEMINI_API_KEY",
-    "meta-llama": "HF_API_KEY",
+    "meta-llama": "META-LLAMA_API_KEY",
 }
 
 _PROVIDER_CHOICES = {"1": "openai", "2": "anthropic", "3": "gemini", "4": "meta-llama"}
