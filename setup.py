@@ -46,6 +46,7 @@ def generate_config(
         "embeddings": {
             "provider": "local",
             "openai_model": "text-embedding-3-small",
+            "emb_model": "sentence-transformers/all-mpnet-base-v2",
         },
         "retrieval": {
             "chunk_size": 1000,

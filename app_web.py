@@ -43,7 +43,7 @@ def render_sidebar():
         st.header("Settings")
 
         # --- Provider dropdown ---
-        providers = ["openai", "anthropic", "gemini"]
+        providers = ["openai", "anthropic", "gemini", "meta-llama"]
         current_provider = cfg.get("llm", {}).get("provider", "openai")
         provider_index = providers.index(current_provider) if current_provider in providers else 0
 

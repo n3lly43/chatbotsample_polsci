@@ -132,6 +132,12 @@ def get_chroma_collection(cfg: dict):
         ef = embedding_functions.OpenAIEmbeddingFunction(
             api_key=api_key, model_name=model,
         )
+    elif embed_provider == "meta-llama":
+        api_key = get_api_key(cfg, "meta-llama")
+        model = cfg.get("embeddings", {}).get("emb_model", "sentence-transformers/all-mpnet-base-v2")
+        ef = embedding_functions.HuggingFaceEmbeddingFunction(
+            api_key=api_key, model_name=model,
+        )
     else:
         ef = embedding_functions.DefaultEmbeddingFunction()
 
