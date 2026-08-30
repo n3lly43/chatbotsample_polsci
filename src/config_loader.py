@@ -10,7 +10,7 @@ _ENV_KEY_MAP = {
     "openai": "OPENAI_API_KEY",
     "anthropic": "ANTHROPIC_API_KEY",
     "gemini": "GEMINI_API_KEY",
-    "meta-llama": "META-LLAMA_API_KEY",
+    "meta-llama": "META_LLAMA_API_KEY",
 }
 
 
